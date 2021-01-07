@@ -6,13 +6,15 @@ import io.metersphere.base.domain.TestResource;
 import io.metersphere.commons.constants.ResourceStatusEnum;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.CommonBeanFactory;
-import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.config.JmeterProperties;
+import io.metersphere.config.KafkaProperties;
+import io.metersphere.controller.ResultHolder;
+import io.metersphere.dto.BaseSystemConfigDTO;
 import io.metersphere.dto.NodeDTO;
 import io.metersphere.i18n.Translator;
 import io.metersphere.performance.engine.AbstractEngine;
-import io.metersphere.performance.engine.EngineContext;
-import io.metersphere.performance.engine.EngineFactory;
-import io.metersphere.performance.engine.docker.request.TestRequest;
+import io.metersphere.performance.engine.request.StartTestRequest;
+import io.metersphere.service.SystemParameterService;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
@@ -34,7 +36,6 @@ public class DockerTestEngine extends AbstractEngine {
         super.init(loadTest);
         this.restTemplate = (RestTemplate) CommonBeanFactory.getBean("restTemplate");
         this.restTemplateWithTimeOut = (RestTemplate) CommonBeanFactory.getBean("restTemplateWithTimeOut");
-        // todo 初始化操作
     }
 
     @Override
@@ -55,49 +56,57 @@ public class DockerTestEngine extends AbstractEngine {
 
         for (int i = 0, size = resourceList.size(); i < size; i++) {
             int ratio = resourceRatio.get(i);
-            double realThreadNum = ((double) ratio / totalThreadNum) * threadNum;
-            runTest(resourceList.get(i), Math.round(realThreadNum), i);
+//            double realThreadNum = ((double) ratio / totalThreadNum) * threadNum;
+            runTest(resourceList.get(i), ((double) ratio / totalThreadNum), i);
         }
 
     }
 
-    private void runTest(TestResource resource, long realThreadNum, int resourceIndex) {
-        // todo 运行测试
-        EngineContext context = null;
-        try {
-            context = EngineFactory.createContext(loadTest, resource.getId(), realThreadNum, this.getStartTime(), this.getReportId(), resourceIndex);
-        } catch (Exception e) {
-            MSException.throwException(e);
-        }
+    private void runTest(TestResource resource, double ratio, int resourceIndex) {
 
         String configuration = resource.getConfiguration();
         NodeDTO node = JSON.parseObject(configuration, NodeDTO.class);
         String nodeIp = node.getIp();
         Integer port = node.getPort();
-        String testId = context.getTestId();
-        String content = context.getContent();
+
+        BaseSystemConfigDTO baseInfo = CommonBeanFactory.getBean(SystemParameterService.class).getBaseInfo();
+        KafkaProperties kafkaProperties = CommonBeanFactory.getBean(KafkaProperties.class);
+        JmeterProperties jmeterProperties = CommonBeanFactory.getBean(JmeterProperties.class);
+        String metersphereUrl = "http://localhost:8081";
+        if (baseInfo != null) {
+            metersphereUrl = baseInfo.getUrl();
+        }
+
+        Map<String, String> env = new HashMap<>();
+        env.put("RATIO", "" + ratio);
+        env.put("RESOURCE_INDEX", "" + resourceIndex);
+        env.put("METERSPHERE_URL", metersphereUrl);
+        env.put("START_TIME", "" + this.getStartTime());
+        env.put("TEST_ID", this.loadTest.getId());
+        env.put("REPORT_ID", this.getReportId());
+        env.put("BOOTSTRAP_SERVERS", kafkaProperties.getBootstrapServers());
+        env.put("LOG_TOPIC", kafkaProperties.getLog().getTopic());
+        env.put("RESOURCE_ID", resource.getId());
+        env.put("THREAD_NUM", "" + threadNum);
+        env.put("HEAP", jmeterProperties.getHeap());
+
+
+        StartTestRequest startTestRequest = new StartTestRequest();
+        startTestRequest.setImage(JMETER_IMAGE);
+        startTestRequest.setEnv(env);
 
         String uri = String.format(BASE_URL + "/jmeter/container/start", nodeIp, port);
-
-        TestRequest testRequest = new TestRequest();
-        testRequest.setSize(1);
-        testRequest.setTestId(testId);
-        testRequest.setFileString(content);
-        testRequest.setImage(JMETER_IMAGE);
-        testRequest.setTestData(context.getTestData());
-        testRequest.setEnv(context.getEnv());
-
-        try {
-            restTemplate.postForObject(uri, testRequest, String.class);
-        } catch (Exception e) {
-            LogUtil.error(e);
+        ResultHolder result = restTemplate.postForObject(uri, startTestRequest, ResultHolder.class);
+        if (result == null) {
             MSException.throwException(Translator.get("start_engine_fail"));
+        }
+        if (!result.isSuccess()) {
+            MSException.throwException(result.getMessage());
         }
     }
 
     @Override
     public void stop() {
-        // TODO 停止运行测试
         String testId = loadTest.getId();
         this.resourceList.forEach(r -> {
             NodeDTO node = JSON.parseObject(r.getConfiguration(), NodeDTO.class);
@@ -105,28 +114,13 @@ public class DockerTestEngine extends AbstractEngine {
             Integer port = node.getPort();
 
             String uri = String.format(BASE_URL + "/jmeter/container/stop/" + testId, ip, port);
-            try {
-                restTemplateWithTimeOut.getForObject(uri, String.class);
-            } catch (Exception e) {
-                LogUtil.error("stop load test fail... " + testId);
-                MSException.throwException(Translator.get("delete_fail"));
+            ResultHolder result = restTemplateWithTimeOut.getForObject(uri, ResultHolder.class);
+            if (result == null) {
+                MSException.throwException(Translator.get("container_delete_fail"));
+            }
+            if (!result.isSuccess()) {
+                MSException.throwException(result.getMessage());
             }
         });
-    }
-
-    @Override
-    public Map<String, String> log() {
-        String testId = loadTest.getId();
-        Map<String, String> logs = new HashMap<>();
-        this.resourceList.forEach(r -> {
-            NodeDTO node = JSON.parseObject(r.getConfiguration(), NodeDTO.class);
-            String ip = node.getIp();
-            Integer port = node.getPort();
-
-            String uri = String.format(BASE_URL + "/jmeter/container/log/" + testId, ip, port);
-            String log = restTemplate.getForObject(uri, String.class);
-            logs.put(node.getIp(), log);
-        });
-        return logs;
     }
 }

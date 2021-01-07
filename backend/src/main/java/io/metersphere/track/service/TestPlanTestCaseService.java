@@ -1,7 +1,10 @@
 package io.metersphere.track.service;
 
 import com.github.pagehelper.PageHelper;
-import io.metersphere.base.domain.*;
+import io.metersphere.base.domain.TestPlan;
+import io.metersphere.base.domain.TestPlanTestCaseExample;
+import io.metersphere.base.domain.TestPlanTestCaseWithBLOBs;
+import io.metersphere.base.domain.User;
 import io.metersphere.base.mapper.TestPlanTestCaseMapper;
 import io.metersphere.base.mapper.ext.ExtTestPlanTestCaseMapper;
 import io.metersphere.commons.constants.TestPlanTestCaseStatus;
@@ -9,11 +12,9 @@ import io.metersphere.commons.user.SessionUser;
 import io.metersphere.commons.utils.BeanUtils;
 import io.metersphere.commons.utils.ServiceUtils;
 import io.metersphere.commons.utils.SessionUtils;
-import io.metersphere.controller.request.OrderRequest;
 import io.metersphere.controller.request.member.QueryMemberRequest;
 import io.metersphere.service.UserService;
 import io.metersphere.track.dto.TestPlanCaseDTO;
-import io.metersphere.track.dto.TestPlanDTO;
 import io.metersphere.track.request.testcase.TestPlanCaseBatchRequest;
 import io.metersphere.track.request.testplancase.QueryTestPlanCaseRequest;
 import org.apache.commons.lang3.StringUtils;
@@ -54,9 +55,18 @@ public class TestPlanTestCaseService {
         });
         return list;
     }
+    public List<TestPlanCaseDTO> listByPlanId(QueryTestPlanCaseRequest request) {
+        List<TestPlanCaseDTO> list = extTestPlanTestCaseMapper.listByPlanId(request);
+        return list;
+    }
 
     public List<TestPlanCaseDTO> listByNode(QueryTestPlanCaseRequest request) {
         List<TestPlanCaseDTO> list = extTestPlanTestCaseMapper.listByNode(request);
+        return list;
+    }
+
+    public List<TestPlanCaseDTO> listByNodes(QueryTestPlanCaseRequest request) {
+        List<TestPlanCaseDTO> list = extTestPlanTestCaseMapper.listByNodes(request);
         return list;
     }
 
@@ -79,6 +89,7 @@ public class TestPlanTestCaseService {
 
         TestPlanTestCaseWithBLOBs testPlanTestCase = new TestPlanTestCaseWithBLOBs();
         BeanUtils.copyBean(testPlanTestCase, request);
+        testPlanTestCase.setUpdateTime(System.currentTimeMillis());
         testPlanTestCaseMapper.updateByExampleSelective(
                 testPlanTestCase,
                 testPlanTestCaseExample);
@@ -116,21 +127,27 @@ public class TestPlanTestCaseService {
 
     public void buildQueryRequest(QueryTestPlanCaseRequest request, int count) {
         SessionUser user = SessionUtils.getUser();
-        List<String> relateTestPlanIds = extTestPlanTestCaseMapper.findRelateTestPlanId(user.getId(), SessionUtils.getCurrentWorkspaceId());
+        List<String> relateTestPlanIds = extTestPlanTestCaseMapper.findRelateTestPlanId(user.getId(), SessionUtils.getCurrentWorkspaceId(), SessionUtils.getCurrentProjectId());
         PageHelper.startPage(1, count, true);
         request.setPlanIds(relateTestPlanIds);
         request.setExecutor(user.getId());
     }
 
-    public TestPlanCaseDTO get(String caseId) {
-        QueryTestPlanCaseRequest request = new QueryTestPlanCaseRequest();
-        request.setId(caseId);
-        return extTestPlanTestCaseMapper.list(request).get(0);
+    public TestPlanCaseDTO get(String testplanTestCaseId) {
+        return extTestPlanTestCaseMapper.get(testplanTestCaseId);
     }
 
     public void deleteTestCaseBath(TestPlanCaseBatchRequest request) {
         TestPlanTestCaseExample example = new TestPlanTestCaseExample();
         example.createCriteria().andIdIn(request.getIds());
         testPlanTestCaseMapper.deleteByExample(example);
+    }
+
+    public List<String> getTestPlanTestCaseIds(String testId) {
+        return extTestPlanTestCaseMapper.getTestPlanTestCaseIds(testId);
+    }
+
+    public int updateTestCaseStates(List<String> ids, String reportStatus) {
+        return extTestPlanTestCaseMapper.updateTestCaseStates(ids, reportStatus);
     }
 }

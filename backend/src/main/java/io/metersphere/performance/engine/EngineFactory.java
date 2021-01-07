@@ -2,6 +2,7 @@ package io.metersphere.performance.engine;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import io.metersphere.Application;
 import io.metersphere.base.domain.FileContent;
 import io.metersphere.base.domain.FileMetadata;
 import io.metersphere.base.domain.LoadTestWithBLOBs;
@@ -9,29 +10,40 @@ import io.metersphere.base.domain.TestResourcePool;
 import io.metersphere.commons.constants.FileType;
 import io.metersphere.commons.constants.ResourcePoolTypeEnum;
 import io.metersphere.commons.exception.MSException;
-import io.metersphere.config.KafkaProperties;
+import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.i18n.Translator;
 import io.metersphere.performance.engine.docker.DockerTestEngine;
 import io.metersphere.performance.parse.EngineSourceParser;
 import io.metersphere.performance.parse.EngineSourceParserFactory;
 import io.metersphere.service.FileService;
+import io.metersphere.service.KubernetesTestEngine;
 import io.metersphere.service.TestResourcePoolService;
+import org.apache.commons.beanutils.ConstructorUtils;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.reflections8.Reflections;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.io.ByteArrayInputStream;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class EngineFactory {
     private static FileService fileService;
     private static TestResourcePoolService testResourcePoolService;
-    private static KafkaProperties kafkaProperties;
+    private static Class<? extends KubernetesTestEngine> kubernetesTestEngineClass;
+
+    static {
+        Reflections reflections = new Reflections(Application.class.getPackage().getName());
+        Set<Class<? extends KubernetesTestEngine>> implClass = reflections.getSubTypesOf(KubernetesTestEngine.class);
+        for (Class<? extends KubernetesTestEngine> aClass : implClass) {
+            kubernetesTestEngineClass = aClass;
+            // 第一个
+            break;
+        }
+    }
 
     public static Engine createEngine(LoadTestWithBLOBs loadTest) {
         String resourcePoolId = loadTest.getTestResourcePoolId();
@@ -49,10 +61,18 @@ public class EngineFactory {
         if (type == ResourcePoolTypeEnum.NODE) {
             return new DockerTestEngine(loadTest);
         }
+        if (type == ResourcePoolTypeEnum.K8S) {
+            try {
+                return ConstructorUtils.invokeConstructor(kubernetesTestEngineClass, loadTest);
+            } catch (Exception e) {
+                LogUtil.error(e);
+                return null;
+            }
+        }
         return null;
     }
 
-    public static EngineContext createContext(LoadTestWithBLOBs loadTest, String resourceId, long threadNum, long startTime, String reportId, int resourceIndex) {
+    public static EngineContext createContext(LoadTestWithBLOBs loadTest, String resourceId, double ratio, long startTime, String reportId, int resourceIndex) {
         final List<FileMetadata> fileMetadataList = fileService.getFileMetadataByTestId(loadTest.getId());
         if (org.springframework.util.CollectionUtils.isEmpty(fileMetadataList)) {
             MSException.throwException(Translator.get("run_load_test_file_not_found") + loadTest.getId());
@@ -63,6 +83,7 @@ public class EngineFactory {
                 });
 
         List<FileMetadata> csvFiles = fileMetadataList.stream().filter(f -> StringUtils.equalsIgnoreCase(f.getType(), FileType.CSV.name())).collect(Collectors.toList());
+        List<FileMetadata> jarFiles = fileMetadataList.stream().filter(f -> StringUtils.equalsIgnoreCase(f.getType(), FileType.JAR.name())).collect(Collectors.toList());
         final FileContent fileContent = fileService.getFileContent(jmxFile.getId());
         if (fileContent == null) {
             MSException.throwException(Translator.get("run_load_test_file_content_not_found") + loadTest.getId());
@@ -72,25 +93,43 @@ public class EngineFactory {
         engineContext.setTestName(loadTest.getName());
         engineContext.setNamespace(loadTest.getProjectId());
         engineContext.setFileType(jmxFile.getType());
-        engineContext.setThreadNum(threadNum);
         engineContext.setResourcePoolId(loadTest.getTestResourcePoolId());
         engineContext.setStartTime(startTime);
         engineContext.setReportId(reportId);
         engineContext.setResourceIndex(resourceIndex);
-        HashMap<String, String> env = new HashMap<String, String>() {{
-            put("BOOTSTRAP_SERVERS", kafkaProperties.getBootstrapServers());
-            put("LOG_TOPIC", kafkaProperties.getLog().getTopic());
-            put("REPORT_ID", reportId);
-            put("RESOURCE_ID", resourceId);
-        }};
-        engineContext.setEnv(env);
 
         if (StringUtils.isNotEmpty(loadTest.getLoadConfiguration())) {
             final JSONArray jsonArray = JSONObject.parseArray(loadTest.getLoadConfiguration());
 
             for (int i = 0; i < jsonArray.size(); i++) {
-                final JSONObject jsonObject = jsonArray.getJSONObject(i);
-                engineContext.addProperty(jsonObject.getString("key"), jsonObject.get("value"));
+                if (jsonArray.get(i) instanceof Map) {
+                    JSONObject o = jsonArray.getJSONObject(i);
+                    String key = o.getString("key");
+                    if ("TargetLevel".equals(key)) {
+                        engineContext.addProperty(key, Math.round(((Integer) o.get("value")) * ratio));
+                    } else {
+                        engineContext.addProperty(key, o.get("value"));
+                    }
+                }
+                if (jsonArray.get(i) instanceof List) {
+                    JSONArray o = jsonArray.getJSONArray(i);
+                    for (int j = 0; j < o.size(); j++) {
+                        JSONObject b = o.getJSONObject(j);
+                        String key = b.getString("key");
+                        Object values = engineContext.getProperty(key);
+                        if (values == null) {
+                            values = new ArrayList<>();
+                        }
+                        if (values instanceof List) {
+                            Object value = b.get("value");
+                            if ("TargetLevel".equals(key)) {
+                                value = Math.round(((Integer) b.get("value")) * ratio);
+                            }
+                            ((List<Object>) values).add(value);
+                            engineContext.addProperty(key, values);
+                        }
+                    }
+                }
             }
         }
         /*
@@ -110,7 +149,11 @@ public class EngineFactory {
         try (ByteArrayInputStream source = new ByteArrayInputStream(fileContent.getFile())) {
             String content = engineSourceParser.parse(engineContext, source);
             engineContext.setContent(content);
+        } catch (MSException e) {
+            LogUtil.error(e.getMessage(), e);
+            throw e;
         } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
             MSException.throwException(e);
         }
 
@@ -121,6 +164,15 @@ public class EngineFactory {
                 data.put(cf.getName(), new String(csvContent.getFile()));
             });
             engineContext.setTestData(data);
+        }
+
+        if (CollectionUtils.isNotEmpty(jarFiles)) {
+            Map<String, byte[]> data = new HashMap<>();
+            jarFiles.forEach(jf -> {
+                FileContent content = fileService.getFileContent(jf.getId());
+                data.put(jf.getName(), content.getFile());
+            });
+            engineContext.setTestJars(data);
         }
 
         return engineContext;
@@ -135,10 +187,5 @@ public class EngineFactory {
     @Resource
     public void setTestResourcePoolService(TestResourcePoolService testResourcePoolService) {
         EngineFactory.testResourcePoolService = testResourcePoolService;
-    }
-
-    @Resource
-    public void setKafkaProperties(KafkaProperties kafkaProperties) {
-        EngineFactory.kafkaProperties = kafkaProperties;
     }
 }

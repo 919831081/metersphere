@@ -14,5 +14,9 @@ public class ProjectDTO {
     private String description;
     private Long createTime;
     private Long updateTime;
+    private String tapdId;
+    private String jiraKey;
+    private String zentaoId;
+    private boolean repeatable;
 
 }

@@ -3,26 +3,41 @@ package io.metersphere.service;
 import io.metersphere.base.domain.SystemParameter;
 import io.metersphere.base.domain.SystemParameterExample;
 import io.metersphere.base.mapper.SystemParameterMapper;
+import io.metersphere.base.mapper.ext.ExtSystemParameterMapper;
 import io.metersphere.commons.constants.ParamConstants;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.EncryptUtils;
+import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.dto.BaseSystemConfigDTO;
 import io.metersphere.i18n.Translator;
 import io.metersphere.ldap.domain.LdapInfo;
+import io.metersphere.notice.domain.MailInfo;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import javax.annotation.Resource;
 import javax.mail.MessagingException;
+import javax.mail.internet.MimeMessage;
 import java.util.*;
 
 
 @Service
+@Transactional(rollbackFor = Exception.class)
 public class SystemParameterService {
 
     @Resource
     private SystemParameterMapper systemParameterMapper;
+    @Resource
+    private ExtSystemParameterMapper extSystemParameterMapper;
+
+    public String searchEmail() {
+        return extSystemParameterMapper.email();
+    }
 
     public String getSystemLanguage() {
         String result = StringUtils.EMPTY;
@@ -40,17 +55,24 @@ public class SystemParameterService {
 
     public void editMail(List<SystemParameter> parameters) {
         List<SystemParameter> paramList = this.getParamList(ParamConstants.Classify.MAIL.getValue());
-        boolean empty = paramList.size() < 2;
+        boolean empty = paramList.size() <= 0;
+
         parameters.forEach(parameter -> {
-            if (parameter.getParamKey().equals(ParamConstants.MAIL.PASSWORD.getKey())) {
-                String string = EncryptUtils.aesEncrypt(parameter.getParamValue()).toString();
-                parameter.setParamValue(string);
+            SystemParameterExample example = new SystemParameterExample();
+            if (parameter.getParamKey().equals(ParamConstants.MAIL.PASSWORD.getValue())) {
+                if (!StringUtils.isBlank(parameter.getParamValue())) {
+                    String string = EncryptUtils.aesEncrypt(parameter.getParamValue()).toString();
+                    parameter.setParamValue(string);
+                }
             }
-            if (empty) {
-                systemParameterMapper.insert(parameter);
-            } else {
+            example.createCriteria().andParamKeyEqualTo(parameter.getParamKey());
+            if (systemParameterMapper.countByExample(example) > 0) {
                 systemParameterMapper.updateByPrimaryKey(parameter);
+            } else {
+                systemParameterMapper.insert(parameter);
             }
+            example.clear();
+
         });
     }
 
@@ -63,54 +85,74 @@ public class SystemParameterService {
     public void testConnection(HashMap<String, String> hashMap) {
         JavaMailSenderImpl javaMailSender = new JavaMailSenderImpl();
         javaMailSender.setDefaultEncoding("UTF-8");
-        javaMailSender.setHost(hashMap.get(ParamConstants.MAIL.SERVER.getKey()));
-        javaMailSender.setPort(Integer.valueOf(hashMap.get(ParamConstants.MAIL.PORT.getKey())));
-        javaMailSender.setUsername(hashMap.get(ParamConstants.MAIL.ACCOUNT.getKey()));
-        javaMailSender.setPassword(hashMap.get(ParamConstants.MAIL.PASSWORD.getKey()));
+        javaMailSender.setHost(hashMap.get(ParamConstants.MAIL.SERVER.getValue()));
+        javaMailSender.setPort(Integer.valueOf(hashMap.get(ParamConstants.MAIL.PORT.getValue())));
+        javaMailSender.setUsername(hashMap.get(ParamConstants.MAIL.ACCOUNT.getValue()));
+        javaMailSender.setPassword(hashMap.get(ParamConstants.MAIL.PASSWORD.getValue()));
         Properties props = new Properties();
-        props.put("mail.smtp.auth", "true");
-        if (BooleanUtils.toBoolean(hashMap.get(ParamConstants.MAIL.SSL.getKey()))) {
+        String recipients = hashMap.get(ParamConstants.MAIL.RECIPIENTS.getValue());
+        if (BooleanUtils.toBoolean(hashMap.get(ParamConstants.MAIL.SSL.getValue()))) {
             props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
         }
-        if (BooleanUtils.toBoolean(hashMap.get(ParamConstants.MAIL.TLS.getKey()))) {
+        if (BooleanUtils.toBoolean(hashMap.get(ParamConstants.MAIL.TLS.getValue()))) {
             props.put("mail.smtp.starttls.enable", "true");
         }
+        props.put("mail.smtp.timeout", "30000");
+        props.put("mail.smtp.connectiontimeout", "5000");
         javaMailSender.setJavaMailProperties(props);
         try {
             javaMailSender.testConnection();
         } catch (MessagingException e) {
+            LogUtil.error(e.getMessage(), e);
             MSException.throwException(Translator.get("connection_failed"));
         }
+        if(!StringUtils.isBlank(recipients)){
+            MimeMessage mimeMessage = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = null;
+            try {
+                helper = new MimeMessageHelper(mimeMessage, true);
+                helper.setFrom(javaMailSender.getUsername());
+                helper.setSubject("MeterSphere测试邮件 " );
+                helper.setText("这是一封测试邮件，邮件发送成功", true);
+                helper.setTo(recipients);
+                javaMailSender.send(mimeMessage);
+            } catch (MessagingException e) {
+                LogUtil.error(e.getMessage(), e);
+                MSException.throwException(Translator.get("connection_failed"));
+            }
+        }
+
+
     }
 
     public String getVersion() {
         return System.getenv("MS_VERSION");
     }
 
-    public Object mailInfo(String type) {
+    public MailInfo mailInfo(String type) {
         List<SystemParameter> paramList = this.getParamList(type);
-        if (CollectionUtils.isEmpty(paramList)) {
-            paramList = new ArrayList<>();
-            ParamConstants.MAIL[] values = ParamConstants.MAIL.values();
-            for (ParamConstants.MAIL value : values) {
-                SystemParameter systemParameter = new SystemParameter();
-                if (value.equals(ParamConstants.MAIL.PASSWORD)) {
-                    systemParameter.setType(ParamConstants.Type.PASSWORD.getValue());
-                } else {
-                    systemParameter.setType(ParamConstants.Type.TEXT.getValue());
+        MailInfo mailInfo=new MailInfo ();
+        if (!CollectionUtils.isEmpty(paramList)) {
+            for (SystemParameter param : paramList) {
+                if (StringUtils.equals(param.getParamKey(),ParamConstants.MAIL.SERVER.getValue() )) {
+                    mailInfo.setHost(param.getParamValue());
+                } else if (StringUtils.equals(param.getParamKey(), ParamConstants.MAIL.PORT.getValue())) {
+                    mailInfo.setPort(param.getParamValue());
+                } else if (StringUtils.equals(param.getParamKey(), ParamConstants.MAIL.ACCOUNT.getValue())) {
+                    mailInfo.setAccount(param.getParamValue());
+                } else if (StringUtils.equals(param.getParamKey(), ParamConstants.MAIL.PASSWORD.getValue())) {
+                    String password = EncryptUtils.aesDecrypt(param.getParamValue()).toString();
+                    mailInfo.setPassword(password);
+                } else if (StringUtils.equals(param.getParamKey(), ParamConstants.MAIL.SSL.getValue())) {
+                    mailInfo.setSsl(param.getParamValue());
+                } else if (StringUtils.equals(param.getParamKey(), ParamConstants.MAIL.TLS.getValue())) {
+                    mailInfo.setTls(param.getParamValue());
+                } else if (StringUtils.equals(param.getParamKey(), ParamConstants.MAIL.RECIPIENTS.getValue())) {
+                    mailInfo.setRecipient(param.getParamValue());
                 }
-                systemParameter.setParamKey(value.getKey());
-                systemParameter.setSort(value.getValue());
-                paramList.add(systemParameter);
             }
-        } else {
-            paramList.stream().filter(param -> param.getParamKey().equals(ParamConstants.MAIL.PASSWORD.getKey())).forEach(param -> {
-                String string = EncryptUtils.aesDecrypt(param.getParamValue()).toString();
-                param.setParamValue(string);
-            });
         }
-        paramList.sort(Comparator.comparingInt(SystemParameter::getSort));
-        return paramList;
+        return mailInfo;
     }
 
     public void saveLdap(List<SystemParameter> parameters) {
@@ -162,5 +204,33 @@ public class SystemParameterService {
             return null;
         }
         return param.getParamValue();
+    }
+
+    public BaseSystemConfigDTO getBaseInfo() {
+        BaseSystemConfigDTO baseSystemConfigDTO = new BaseSystemConfigDTO();
+        List<SystemParameter> paramList = this.getParamList(ParamConstants.Classify.BASE.getValue());
+        if (!CollectionUtils.isEmpty(paramList)) {
+            for (SystemParameter param : paramList) {
+                if (StringUtils.equals(param.getParamKey(), ParamConstants.BASE.URL.getValue())) {
+                    baseSystemConfigDTO.setUrl(param.getParamValue());
+                }
+            }
+        }
+        return baseSystemConfigDTO;
+    }
+
+    public void saveBaseInfo(List<SystemParameter> parameters) {
+        SystemParameterExample example = new SystemParameterExample();
+        parameters.forEach(param -> {
+            // 去掉路径最后的 /
+            param.setParamValue(StringUtils.removeEnd(param.getParamValue(), "/"));
+            example.createCriteria().andParamKeyEqualTo(param.getParamKey());
+            if (systemParameterMapper.countByExample(example) > 0) {
+                systemParameterMapper.updateByPrimaryKey(param);
+            } else {
+                systemParameterMapper.insert(param);
+            }
+            example.clear();
+        });
     }
 }

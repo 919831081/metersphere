@@ -4,7 +4,13 @@
     <template>
       <el-table
         row-key="id"
+        @row-click="goFailureTestCase"
         :data="failureTestCases">
+        <el-table-column
+          prop="num"
+          :label="$t('commons.id')"
+          show-overflow-tooltip>
+        </el-table-column>
         <el-table-column
           prop="name"
           :label="$t('commons.name')"
@@ -46,6 +52,12 @@
         </el-table-column>
 
         <el-table-column
+          prop="projectName"
+          :label="$t('test_track.case.project_name')"
+          show-overflow-tooltip>
+        </el-table-column>
+
+        <el-table-column
           prop="executorName"
           :label="$t('test_track.plan_view.executor')">
         </el-table-column>
@@ -80,6 +92,7 @@
     import TypeTableItem from "../../../../../common/tableItems/planview/TypeTableItem";
     import MethodTableItem from "../../../../../common/tableItems/planview/MethodTableItem";
     import StatusTableItem from "../../../../../common/tableItems/planview/StatusTableItem";
+    import {hub} from "@/business/components/track/plan/event-bus";
     export default {
       name: "FailureResultComponent",
       components: {StatusTableItem, MethodTableItem, TypeTableItem, PriorityTableItem, CommonComponent},
@@ -110,6 +123,11 @@
               }
             ]
           }
+        }
+      },
+      methods: {
+        goFailureTestCase(row) {
+          hub.$emit("openFailureTestCase", row);
         }
       }
     }

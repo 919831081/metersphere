@@ -2,7 +2,7 @@ package io.metersphere.base.mapper.ext;
 
 import io.metersphere.api.dto.APIReportResult;
 import io.metersphere.api.dto.QueryAPIReportRequest;
-import io.metersphere.dto.ApiReportDTO;
+import io.metersphere.api.dto.datacount.ApiDataCountResult;
 import io.metersphere.dto.DashboardTestDTO;
 import org.apache.ibatis.annotations.Param;
 
@@ -18,4 +18,7 @@ public interface ExtApiTestReportMapper {
 
     List<DashboardTestDTO> selectDashboardTests(@Param("workspaceId") String workspaceId, @Param("startTimestamp") long startTimestamp);
 
+    List<ApiDataCountResult> countByProjectIdGroupByExecuteResult(String projectId);
+
+    long countByProjectIDAndCreateInThisWeek(@Param("projectId") String projectId, @Param("startTime") long startTime, @Param("endTime")long endTime);
 }

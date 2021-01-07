@@ -5,6 +5,10 @@ import i18n from '../../i18n/i18n'
 
 export default {
   install(Vue) {
+
+    // 登入请求不重定向
+    let unRedirectUrls = new Set(['signin','ldap/signin']);
+
     if (!axios) {
       window.console.error('You have to install axios');
       return
@@ -43,21 +47,27 @@ export default {
         success(response.data);
       } else {
         window.console.warn(response.data);
-        Message.warning(response.data.message);
+        if (response.data.message) {
+          Message.warning(response.data.message);
+        }
       }
       result.loading = false;
     }
 
-    function exception(error, result) {
-      if (error.response && error.response.status === 401) {
+    function exception(error, result, url) {
+      if (error.response && error.response.status === 401 && !unRedirectUrls.has(url)) {
         login();
+        return;
+      }
+      if (error.response && error.response.status === 403 && !unRedirectUrls.has(url)) {
+        window.location.href = "/";
         return;
       }
       result.loading = false;
       window.console.error(error.response || error.message);
       if (error.response && error.response.data) {
-        if (error.response.headers["authentication-status"] != "invalid") {
-          Message.error({message: error.response.data.message, showClose: true});
+        if (error.response.headers["authentication-status"] !== "invalid") {
+          Message.error({message: error.response.data.message || error.response.data, showClose: true});
         }
       } else {
         Message.error({message: error.message, showClose: true});
@@ -72,7 +82,7 @@ export default {
         axios.get(url).then(response => {
           then(success, response, result);
         }).catch(error => {
-          exception(error, result);
+          exception(error, result, url);
         });
         return result;
       }
@@ -86,7 +96,7 @@ export default {
         axios.post(url, data).then(response => {
           then(success, response, result);
         }).catch(error => {
-          exception(error, result);
+          exception(error, result, url);
           if (failure) {
             then(failure, error, result);
           }
@@ -95,7 +105,7 @@ export default {
       }
     };
 
-    Vue.prototype.$request = function (axiosRequestConfig, success) {
+    Vue.prototype.$request = function (axiosRequestConfig, success, failure) {
       let result = {loading: true};
       if (!success) {
         return axios.request(axiosRequestConfig);
@@ -104,6 +114,9 @@ export default {
           then(success, response, result);
         }).catch(error => {
           exception(error, result);
+          if (failure) {
+            then(failure, error, result);
+          }
         });
         return result;
       }
@@ -114,7 +127,7 @@ export default {
       axios.all(array).then(axios.spread(callback));
     };
 
-    Vue.prototype.$fileDownload = function(url) {
+    Vue.prototype.$fileDownload = function (url) {
       axios.get(url, {responseType: 'blob'})
         .then(response => {
           let fileName = window.decodeURI(response.headers['content-disposition'].split('=')[1]);
@@ -125,24 +138,27 @@ export default {
         });
     };
 
-    Vue.prototype.$fileUpload = function(url, fileList, success, failure) {
-      let result = {loading: true};
+    Vue.prototype.$fileUpload = function (url, file, files, param, success, failure) {
       let formData = new FormData();
-      if (fileList.length > 0) {
-        fileList.forEach(f => {
-          formData.append("file", f);
-        });
+      if (file) {
+        formData.append("file", file);
       }
-      axios.post(url, formData, { headers: { "Content-Type": "multipart/form-data" }})
-        .then(response => {
-          then(success, response, result);
-        }).catch(error => {
-          exception(error, result);
-          if (failure) {
-          then(failure, error, result);
+      if (files) {
+        files.forEach(f => {
+          formData.append("files", f);
+        })
+      }
+      formData.append('request', new Blob([JSON.stringify(param)], {type: "application/json"}));
+      let axiosRequestConfig = {
+        method: 'POST',
+        url: url,
+        data: formData,
+        headers: {
+          'Content-Type': undefined
         }
-      });
-      return result;
+      };
+      return Vue.prototype.$request(axiosRequestConfig, success, failure);
     }
+
   }
 }

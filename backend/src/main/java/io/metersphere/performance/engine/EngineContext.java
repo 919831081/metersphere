@@ -10,13 +10,12 @@ public class EngineContext {
     private String fileType;
     private String content;
     private String resourcePoolId;
-    private Long threadNum;
     private Long startTime;
     private String reportId;
     private Integer resourceIndex;
     private Map<String, Object> properties = new HashMap<>();
     private Map<String, String> testData = new HashMap<>();
-    private Map<String, String> env = new HashMap<>();
+    private Map<String, byte[]> testJars = new HashMap<>();
 
     public String getTestId() {
         return testId;
@@ -48,14 +47,6 @@ public class EngineContext {
 
     public void addProperties(Map<String, Object> props) {
         this.properties.putAll(props);
-    }
-
-    public Map<String, String> getEnv() {
-        return env;
-    }
-
-    public void setEnv(Map<String, String> env) {
-        this.env = env;
     }
 
     public Object getProperty(String key) {
@@ -94,14 +85,6 @@ public class EngineContext {
         this.resourcePoolId = resourcePoolId;
     }
 
-    public Long getThreadNum() {
-        return threadNum;
-    }
-
-    public void setThreadNum(Long threadNum) {
-        this.threadNum = threadNum;
-    }
-
     public Long getStartTime() {
         return startTime;
     }
@@ -125,5 +108,14 @@ public class EngineContext {
 
     public void setResourceIndex(Integer resourceIndex) {
         this.resourceIndex = resourceIndex;
+    }
+
+
+    public Map<String, byte[]> getTestJars() {
+        return testJars;
+    }
+
+    public void setTestJars(Map<String, byte[]> testJars) {
+        this.testJars = testJars;
     }
 }

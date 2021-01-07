@@ -5,6 +5,7 @@ import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtUserMapper;
 import io.metersphere.base.mapper.ext.ExtUserRoleMapper;
 import io.metersphere.commons.constants.RoleConstants;
+import io.metersphere.commons.constants.UserSource;
 import io.metersphere.commons.constants.UserStatus;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.user.SessionUser;
@@ -21,6 +22,7 @@ import io.metersphere.controller.request.organization.QueryOrgMemberRequest;
 import io.metersphere.dto.UserDTO;
 import io.metersphere.dto.UserRoleDTO;
 import io.metersphere.i18n.Translator;
+import io.metersphere.notice.domain.UserDetail;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.SecurityUtils;
 import org.apache.shiro.authc.*;
@@ -60,6 +62,18 @@ public class UserService {
     @Resource
     private WorkspaceService workspaceService;
 
+    public List<UserDetail> queryTypeByIds(List<String> userIds) {
+        return extUserMapper.queryTypeByIds(userIds);
+    }
+
+    public Map<String, User> queryNameByIds(List<String> userIds) {
+        return extUserMapper.queryNameByIds(userIds);
+    }
+
+  /*  public List<String> queryEmailByIds(List<String> userIds) {
+        return extUserMapper.queryTypeByIds(userIds);
+    }*/
+
     public UserDTO insert(UserRequest user) {
         checkUserParam(user);
         //
@@ -77,8 +91,18 @@ public class UserService {
         return getUserDTO(user.getId());
     }
 
-    public User selectUser(String id) {
-        return userMapper.selectByPrimaryKey(id);
+    public User selectUser(String userId, String email) {
+        User user = userMapper.selectByPrimaryKey(userId);
+        if (user == null) {
+            UserExample example = new UserExample();
+            example.createCriteria().andEmailEqualTo(email);
+            List<User> users = userMapper.selectByExample(example);
+            if (!CollectionUtils.isEmpty(users)) {
+                return users.get(0);
+            }
+        }
+        return user;
+
     }
 
     private void insertUserRole(List<Map<String, Object>> roles, String userId) {
@@ -137,16 +161,40 @@ public class UserService {
         user.setUpdateTime(System.currentTimeMillis());
         // 默认1:启用状态
         user.setStatus(UserStatus.NORMAL);
+        user.setSource(UserSource.LOCAL.name());
         // 密码使用 MD5
         user.setPassword(CodingUtil.md5(user.getPassword()));
+        checkEmailIsExist(user.getEmail());
+        userMapper.insertSelective(user);
+    }
+
+    public void addLdapUser(User user) {
+        user.setCreateTime(System.currentTimeMillis());
+        user.setUpdateTime(System.currentTimeMillis());
+        user.setStatus(UserStatus.NORMAL);
+        checkEmailIsExist(user.getEmail());
+        userMapper.insertSelective(user);
+    }
+
+    public void createOssUser(User user) {
+        user.setCreateTime(System.currentTimeMillis());
+        user.setUpdateTime(System.currentTimeMillis());
+        user.setStatus(UserStatus.NORMAL);
+        if (StringUtils.isBlank(user.getEmail())) {
+            user.setEmail(user.getId() + "@metershpere.io");
+        }
+        userMapper.insertSelective(user);
+    }
+
+
+    private void checkEmailIsExist(String email) {
         UserExample userExample = new UserExample();
         UserExample.Criteria criteria = userExample.createCriteria();
-        criteria.andEmailEqualTo(user.getEmail());
+        criteria.andEmailEqualTo(email);
         List<User> userList = userMapper.selectByExample(userExample);
         if (!CollectionUtils.isEmpty(userList)) {
             MSException.throwException(Translator.get("user_email_already_exists"));
         }
-        userMapper.insertSelective(user);
     }
 
     public UserDTO getUserDTO(String userId) {
@@ -166,13 +214,30 @@ public class UserService {
         return userDTO;
     }
 
-    public UserDTO getUserDTOByEmail(String email) {
+    public UserDTO getLoginUser(String userId, List<String> list) {
         UserExample example = new UserExample();
-        example.createCriteria().andEmailEqualTo(email);
+        example.createCriteria().andIdEqualTo(userId).andSourceIn(list);
+        if (userMapper.countByExample(example) == 0) {
+            return null;
+        }
+        return getUserDTO(userId);
+    }
+
+    public UserDTO getUserDTOByEmail(String email, String... source) {
+        UserExample example = new UserExample();
+        UserExample.Criteria criteria = example.createCriteria();
+        criteria.andEmailEqualTo(email);
+
+        if (!CollectionUtils.isEmpty(Arrays.asList(source))) {
+            criteria.andSourceIn(Arrays.asList(source));
+        }
+
         List<User> users = userMapper.selectByExample(example);
+
         if (users == null || users.size() <= 0) {
             return null;
         }
+
         return getUserDTO(users.get(0).getId());
     }
 
@@ -257,8 +322,23 @@ public class UserService {
     }
 
     public void updateUser(User user) {
+        // todo 提取重复代码
+        if (StringUtils.isNotBlank(user.getEmail())) {
+            UserExample example = new UserExample();
+            UserExample.Criteria criteria = example.createCriteria();
+            criteria.andEmailEqualTo(user.getEmail());
+            criteria.andIdNotEqualTo(user.getId());
+            if (userMapper.countByExample(example) > 0) {
+                MSException.throwException(Translator.get("user_email_already_exists"));
+            }
+        }
+
         user.setUpdateTime(System.currentTimeMillis());
         userMapper.updateByPrimaryKeySelective(user);
+        // 禁用用户之后，剔除在线用户
+        if (StringUtils.equals(user.getStatus(), UserStatus.DISABLED)) {
+            SessionUtils.kickOutUser(user.getId());
+        }
     }
 
     public void switchUserRole(String sign, String sourceId) {
@@ -341,7 +421,7 @@ public class UserService {
                 userRoleExample.createCriteria().andUserIdEqualTo(userId).andSourceIdEqualTo(request.getOrganizationId());
                 List<UserRole> userRoles = userRoleMapper.selectByExample(userRoleExample);
                 if (userRoles.size() > 0) {
-                    MSException.throwException(Translator.get("user_already_exists"));
+                    MSException.throwException(Translator.get("user_already_exists") + ": " + userId);
                 } else {
                     for (String roleId : request.getRoleIds()) {
                         UserRole userRole = new UserRole();
@@ -359,8 +439,12 @@ public class UserService {
     }
 
     public void delOrganizationMember(String organizationId, String userId) {
+
+        List<String> resourceIds = workspaceService.getWorkspaceIdsOrgId(organizationId);
+        resourceIds.add(organizationId);
+
         UserRoleExample userRoleExample = new UserRoleExample();
-        userRoleExample.createCriteria().andRoleIdLike("%org%").andUserIdEqualTo(userId).andSourceIdEqualTo(organizationId);
+        userRoleExample.createCriteria().andUserIdEqualTo(userId).andSourceIdIn(resourceIds);
 
         User user = userMapper.selectByPrimaryKey(userId);
         if (StringUtils.equals(organizationId, user.getLastOrganizationId())) {
@@ -427,20 +511,18 @@ public class UserService {
 
     /*修改当前用户用户密码*/
     private User updateCurrentUserPwd(EditPassWordRequest request) {
-        if (SessionUtils.getUser() != null) {
-            User user = userMapper.selectByPrimaryKey(SessionUtils.getUser().getId());
-            String pwd = user.getPassword();
-            String prepwd = CodingUtil.md5(request.getPassword(), "utf-8");
-            String newped = request.getNewpassword();
-            if (StringUtils.isNotBlank(prepwd)) {
-                if (prepwd.trim().equals(pwd.trim())) {
-                    user.setPassword(CodingUtil.md5(newped));
-                    user.setUpdateTime(System.currentTimeMillis());
-                    return user;
-                }
-            }
-            MSException.throwException(Translator.get("password_modification_failed"));
+        String oldPassword = CodingUtil.md5(request.getPassword(), "utf-8");
+        String newPassword = request.getNewpassword();
+        UserExample userExample = new UserExample();
+        userExample.createCriteria().andIdEqualTo(SessionUtils.getUser().getId()).andPasswordEqualTo(oldPassword);
+        List<User> users = userMapper.selectByExample(userExample);
+        if (!CollectionUtils.isEmpty(users)) {
+            User user = users.get(0);
+            user.setPassword(CodingUtil.md5(newPassword));
+            user.setUpdateTime(System.currentTimeMillis());
+            return user;
         }
+        MSException.throwException(Translator.get("password_modification_failed"));
         return null;
     }
 
@@ -452,8 +534,8 @@ public class UserService {
     /*管理员修改用户密码*/
     private User updateUserPwd(EditPassWordRequest request) {
         User user = userMapper.selectByPrimaryKey(request.getId());
-        String newped = request.getNewpassword();
-        user.setPassword(CodingUtil.md5(newped));
+        String newPassword = request.getNewpassword();
+        user.setPassword(CodingUtil.md5(newPassword));
         user.setUpdateTime(System.currentTimeMillis());
         return user;
     }
@@ -473,16 +555,18 @@ public class UserService {
     }
 
     public ResultHolder login(LoginRequest request) {
-        String msg;
+        String login = (String) SecurityUtils.getSubject().getSession().getAttribute("authenticate");
         String username = StringUtils.trim(request.getUsername());
-        String password = StringUtils.trim(request.getPassword());
-        if (StringUtils.isBlank(username) || StringUtils.isBlank(password)) {
-            return ResultHolder.error("user or password can't be null");
+        String password = "";
+        if (!StringUtils.equals(login, UserSource.LDAP.name())) {
+            password = StringUtils.trim(request.getPassword());
+            if (StringUtils.isBlank(username) || StringUtils.isBlank(password)) {
+                return ResultHolder.error("user or password can't be null");
+            }
         }
 
         UsernamePasswordToken token = new UsernamePasswordToken(username, password);
         Subject subject = SecurityUtils.getSubject();
-
         try {
             subject.login(token);
             if (subject.isAuthenticated()) {
@@ -506,18 +590,21 @@ public class UserService {
                 return ResultHolder.error(Translator.get("login_fail"));
             }
         } catch (ExcessiveAttemptsException e) {
-            msg = Translator.get("excessive_attempts");
+            throw new ExcessiveAttemptsException(Translator.get("excessive_attempts"));
         } catch (LockedAccountException e) {
-            msg = Translator.get("user_locked");
+            throw new LockedAccountException(Translator.get("user_locked"));
         } catch (DisabledAccountException e) {
-            msg = Translator.get("user_has_been_disabled");
+            throw new DisabledAccountException(Translator.get("user_has_been_disabled"));
         } catch (ExpiredCredentialsException e) {
-            msg = Translator.get("user_expires");
+            throw new ExpiredCredentialsException(Translator.get("user_expires"));
         } catch (AuthenticationException e) {
-            msg = e.getMessage();
+            throw new AuthenticationException(e.getMessage());
         } catch (UnauthorizedException e) {
-            msg = Translator.get("not_authorized") + e.getMessage();
+            throw new UnauthorizedException(Translator.get("not_authorized") + e.getMessage());
         }
-        return ResultHolder.error(msg);
+    }
+
+    public List<User> searchUser(String condition) {
+        return extUserMapper.searchUser(condition);
     }
 }

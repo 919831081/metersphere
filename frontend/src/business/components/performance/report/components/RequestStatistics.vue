@@ -5,8 +5,6 @@
       stripe
       border
       style="width: 100%"
-      show-summary
-      :summary-method="getSummaries"
     >
       <el-table-column label="Requests" fixed width="450" align="center">
         <el-table-column
@@ -25,7 +23,7 @@
 
         <el-table-column
           prop="ko"
-          label="KO%"
+          label="KO"
           align="center"
         />
 
@@ -66,8 +64,8 @@
       <el-table-column label="Throughput">
         <el-table-column
           prop="transactions"
-          label="Transactions"
-          width="100"
+          label="Transactions/s"
+          width="150"
         />
       </el-table-column>
 
@@ -76,13 +74,13 @@
           prop="received"
           label="Received"
           align="center"
-          width="200"
+          width="150"
         />
         <el-table-column
           prop="sent"
           label="Sent"
           align="center"
-          width="200"
+          width="150"
         />
       </el-table-column>
 
@@ -91,87 +89,42 @@
 </template>
 
 <script>
-  export default {
-    name: "RequestStatistics",
-    data() {
-      return {
-        tableData: [],
-        id: ''
-      }
+export default {
+  name: "RequestStatistics",
+  data() {
+    return {
+      tableData: [],
+      id: ''
+    }
+  },
+  methods: {
+    initTableData() {
+      this.$get("/performance/report/content/" + this.id).then(res => {
+        this.tableData = res.data.data;
+      }).catch(() => {
+        this.tableData = [];
+      })
     },
-    methods: {
-      initTableData() {
-        this.$get("/performance/report/content/" + this.id).then(res => {
-          this.tableData = res.data.data;
-        }).catch(() => {
+  },
+  watch: {
+    report: {
+      handler(val) {
+        if (!val.status || !val.id) {
+          return;
+        }
+        let status = val.status;
+        this.id = val.id;
+        if (status === "Completed" || status === "Running") {
+          this.initTableData();
+        } else {
           this.tableData = [];
-        })
+        }
       },
-      getSummaries(param) {
-        const {data} = param;
-        const sums = []
-        let allSamples = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.samples);
-        }, 0);
-        let failSize = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.ko);
-        }, 0);
-        let averageTimeTotal = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.average) * parseFloat(currentValue.samples);
-        }, 0);
-        let tp90Total = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.tp90) * parseFloat(currentValue.samples);
-        }, 0);
-        let tp95Total = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.tp95) * parseFloat(currentValue.samples);
-        }, 0);
-        let tp99Total = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.tp99) * parseFloat(currentValue.samples);
-        }, 0);
-        let transactions = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.transactions);
-        }, 0);
-        let received = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.received);
-        }, 0);
-        let sent = data.reduce(function (total, currentValue) {
-          return total + parseFloat(currentValue.sent);
-        }, 0);
-
-        let error = (Math.round(failSize / allSamples * 10000) / 100) + '%';
-        let averageTime = (averageTimeTotal / allSamples).toFixed(2);
-        let tp90 = (tp90Total / allSamples).toFixed(2);
-        let tp95 = (tp95Total / allSamples).toFixed(2);
-        let tp99 = (tp99Total / allSamples).toFixed(2);
-        let min = Math.min.apply(Math, data.map(function (o) {
-          return parseFloat(o.min)
-        }));
-        let max = Math.max.apply(Math, data.map(function (o) {
-          return parseFloat(o.max)
-        }));
-
-        sums.push('Total', allSamples, failSize, error, averageTime, min, max, tp90, tp95, tp99, transactions, received, sent);
-
-        return sums;
-
-      }
-    },
-    watch: {
-      report: {
-        handler(val){
-          let status = val.status;
-          this.id = val.id;
-          if (status === "Completed" || status === "Running") {
-            this.initTableData();
-          } else {
-            this.tableData = [];
-          }
-        },
-        deep:true
-      }
-    },
-    props: ['report']
-  }
+      deep: true
+    }
+  },
+  props: ['report']
+}
 </script>
 
 <style scoped>

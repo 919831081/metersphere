@@ -10,7 +10,7 @@
       </template>
 
       <!--Personal information menu-->
-      <el-table :data="tableData" style="width: 100%">
+      <el-table border class="adjust-table" :data="tableData" style="width: 100%">
         <el-table-column prop="id" label="ID"/>
         <el-table-column prop="name" :label="$t('commons.username')"/>
         <el-table-column prop="email" :label="$t('commons.email')"/>
@@ -24,7 +24,7 @@
           <template v-slot:default="scope">
             <ms-table-operator-button :tip="$t('member.edit_information')" icon="el-icon-edit"
                                       type="primary" @exec="edit(scope.row)"/>
-            <ms-table-operator-button :tip="$t('member.edit_password')" icon="el-icon-s-tools"
+            <ms-table-operator-button :tip="$t('member.edit_password')" icon="el-icon-s-tools" v-if="!isLdapUser"
                                       type="success" @exec="editPassword(scope.row)"/>
           </template>
         </el-table-column>
@@ -32,7 +32,7 @@
     </el-card>
 
     <!--Modify personal details-->
-    <el-dialog :title="$t('member.modify_personal_info')" :visible.sync="updateVisible" width="30%"
+    <el-dialog :close-on-click-modal="false" :title="$t('member.modify_personal_info')" :visible.sync="updateVisible" width="30%"
                :destroy-on-close="true" @close="handleClose">
       <el-form :model="form" label-position="right" label-width="100px" size="small" :rules="rule"
                ref="updateUserForm">
@@ -43,7 +43,7 @@
           <el-input v-model="form.name" autocomplete="off"/>
         </el-form-item>
         <el-form-item :label="$t('commons.email')" prop="email">
-          <el-input v-model="form.email" autocomplete="off"/>
+          <el-input v-model="form.email" autocomplete="off" :disabled="isLdapUser"/>
         </el-form-item>
         <el-form-item :label="$t('commons.phone')" prop="phone">
           <el-input v-model="form.phone" autocomplete="off"/>
@@ -57,13 +57,17 @@
     </el-dialog>
 
     <!--Change personal password-->
-    <el-dialog :title="$t('member.edit_password')" :visible.sync="editPasswordVisible" width="35%" left>
+    <el-dialog :close-on-click-modal="false" :title="$t('member.edit_password')" :visible.sync="editPasswordVisible" width="35%"
+               :destroy-on-close="true" @close="handleClose" left>
       <el-form :model="ruleForm" :rules="rules" ref="editPasswordForm" label-width="120px" class="demo-ruleForm">
         <el-form-item :label="$t('member.old_password')" prop="password" style="margin-bottom: 29px">
           <el-input v-model="ruleForm.password" autocomplete="off" show-password/>
         </el-form-item>
         <el-form-item :label="$t('member.new_password')" prop="newpassword">
           <el-input v-model="ruleForm.newpassword" autocomplete="off" show-password/>
+        </el-form-item>
+        <el-form-item :label="$t('member.repeat_password')" prop="repeatPassword">
+          <el-input v-model="ruleForm.repeatPassword" autocomplete="off" show-password/>
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
@@ -80,8 +84,9 @@
 <script>
   import {TokenKey} from "../../../../common/js/constants";
   import MsDialogFooter from "../../common/components/MsDialogFooter";
-  import {getCurrentUser} from "../../../../common/js/utils";
+  import {getCurrentUser, listenGoBack, removeGoBackListener} from "../../../../common/js/utils";
   import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
+  import {PHONE_REGEX} from "@/common/js/regex";
 
   export default {
     name: "MsPersonSetting",
@@ -89,6 +94,7 @@
     data() {
       return {
         result: {},
+        isLdapUser: false,
         updateVisible: false,
         editPasswordVisible: false,
         tableData: [],
@@ -99,7 +105,7 @@
         rule: {
           name: [
             {required: true, message: this.$t('member.input_name'), trigger: 'blur'},
-            {min: 2, max: 10, message: this.$t('commons.input_limit', [2, 10]), trigger: 'blur'},
+            {min: 2, max: 20, message: this.$t('commons.input_limit', [2, 20]), trigger: 'blur'},
             {
               required: true,
               pattern: /^[\u4e00-\u9fa5_a-zA-Z0-9.·-]+$/,
@@ -108,9 +114,10 @@
             }
           ],
           phone: [
+            {required: true, message: this.$t('user.input_phone'), trigger: 'blur'},
             {
               required: false,
-              pattern: '^1(3|4|5|7|8)\\d{9}$',
+              pattern: PHONE_REGEX,
               message: this.$t('member.mobile_number_format_is_incorrect'),
               trigger: 'blur'
             }
@@ -133,7 +140,16 @@
             {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
             {
               required: true,
-              pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,16}$/,
+              pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,30}$/,
+              message: this.$t('member.password_format_is_incorrect'),
+              trigger: 'blur'
+            },
+          ],
+          repeatPassword: [
+            {required: true, message: this.$t('user.input_password'), trigger: 'blur'},
+            {
+              required: true,
+              pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[^]{8,30}$/,
               message: this.$t('member.password_format_is_incorrect'),
               trigger: 'blur'
             },
@@ -152,9 +168,21 @@
       edit(row) {
         this.updateVisible = true;
         this.form = Object.assign({}, row);
+        listenGoBack(this.handleClose);
       },
       editPassword(row) {
         this.editPasswordVisible = true;
+        listenGoBack(this.handleClose);
+      },
+      cancel(){
+        this.editPasswordVisible = false;
+        this.ruleForm.password="";
+        this.ruleForm.newpassword="";
+      },
+      closeDialog(){
+        this.editPasswordVisible = false;
+        this.ruleForm.password="";
+        this.ruleForm.newpassword="";
       },
       updateUser(updateUserForm) {
         this.$refs[updateUserForm].validate(valid => {
@@ -174,6 +202,10 @@
       updatePassword(editPasswordForm) {
         this.$refs[editPasswordForm].validate(valid => {
           if (valid) {
+            if (this.ruleForm.newpassword !== this.ruleForm.repeatPassword) {
+              this.$warning(this.$t('member.inconsistent_passwords'));
+              return;
+            }
             this.result = this.$post(this.updatePasswordPath, this.ruleForm, response => {
               this.$success(this.$t('commons.modify_success'));
               this.editPasswordVisible = false;
@@ -186,8 +218,9 @@
         })
       },
       initTableData() {
-        this.result = this.$get("/user/info/" + this.currentUser().id, response => {
+        this.result = this.$get("/user/info/" + encodeURIComponent(this.currentUser().id), response => {
           let data = response.data;
+          this.isLdapUser = response.data.source === 'LDAP' ? true : false;
           let dataList = [];
           dataList[0] = data;
           this.tableData = dataList;
@@ -196,6 +229,9 @@
       handleClose() {
         this.form = {};
         this.ruleForm = {};
+        removeGoBackListener(this.handleClose);
+        this.editPasswordVisible = false;
+        this.updateVisible = false;
       }
     }
   }

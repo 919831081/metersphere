@@ -2,17 +2,19 @@ package io.metersphere.ldap.controller;
 
 import io.metersphere.base.domain.User;
 import io.metersphere.commons.constants.ParamConstants;
+import io.metersphere.commons.constants.UserSource;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.controller.ResultHolder;
 import io.metersphere.controller.request.LoginRequest;
 import io.metersphere.i18n.Translator;
 import io.metersphere.ldap.service.LdapService;
-import io.metersphere.ldap.domain.LdapInfo;
 import io.metersphere.service.SystemParameterService;
 import io.metersphere.service.UserService;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.SecurityUtils;
+import org.springframework.ldap.core.DirContextOperations;
 import org.springframework.web.bind.annotation.*;
+
 import javax.annotation.Resource;
 
 @RestController
@@ -34,38 +36,58 @@ public class LdapController {
             MSException.throwException(Translator.get("ldap_authentication_not_enabled"));
         }
 
-        ldapService.authenticate(request);
+        DirContextOperations dirContext = ldapService.authenticate(request);
+        String email = ldapService.getMappingAttr("email", dirContext);
+        String userId = ldapService.getMappingAttr("username", dirContext);
 
-        SecurityUtils.getSubject().getSession().setAttribute("authenticate", "ldap");
+        SecurityUtils.getSubject().getSession().setAttribute("authenticate", UserSource.LDAP.name());
+        SecurityUtils.getSubject().getSession().setAttribute("email", email);
 
-        String username = request.getUsername();
-        String password = request.getPassword();
 
-        User u = userService.selectUser(request.getUsername());
-        if (u == null) {
-            User user = new User();
-            user.setId(username);
-            user.setName(username);
-            // todo user email ?
-            user.setEmail(username + "@fit2cloud.com");
-            user.setPassword(password);
-            userService.createUser(user);
-        } else {
-            request.setUsername(u.getId());
-            request.setPassword(u.getPassword());
+        if (StringUtils.isBlank(email)) {
+            MSException.throwException(Translator.get("login_fail_email_null"));
         }
 
-        return userService.login(request);
+        // userId 或 email 有一个相同即为存在本地用户
+        User u = userService.selectUser(userId, email);
+        if (u == null) {
+
+            // 新建用户 获取LDAP映射属性
+            String name = ldapService.getMappingAttr("name", dirContext);
+            String phone = ldapService.getNotRequiredMappingAttr("phone", dirContext);
+
+            User user = new User();
+            user.setId(userId);
+            user.setName(name);
+            user.setEmail(email);
+
+            if (StringUtils.isNotBlank(phone)) {
+                user.setPhone(phone);
+            }
+
+            user.setSource(UserSource.LDAP.name());
+            userService.addLdapUser(user);
+        }
+
+        // 执行 ShiroDBRealm 中 LDAP 登录逻辑
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setUsername(userId);
+        return userService.login(loginRequest);
     }
 
     @PostMapping("/test/connect")
-    public void testConnect(@RequestBody LdapInfo ldapInfo) {
-        ldapService.testConnect(ldapInfo);
+    public void testConnect() {
+        ldapService.testConnect();
     }
 
     @PostMapping("/test/login")
     public void testLogin(@RequestBody LoginRequest request) {
         ldapService.authenticate(request);
+    }
+
+    @GetMapping("/open")
+    public boolean isOpen() {
+        return ldapService.isOpen();
     }
 
 }

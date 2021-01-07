@@ -2,19 +2,19 @@
 	<el-form size='small'>
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="1">
-				周，允许的通配符[, - * / L #]
+        {{$t('schedule.cron.weeks')}}，{{$t('schedule.cron.weeks_allowed_wildcards')}}
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="2">
-				不指定
+        {{$t('schedule.cron.not_specify')}}
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="3">
-				周期从星期
+        {{$t('schedule.cron.period')}} {{$t('schedule.cron.from')}}{{$t('schedule.cron.week')}}
 				<el-input-number v-model='cycle01' :min="1" :max="7" /> -
 				<el-input-number v-model='cycle02' :min="1" :max="7" />
 			</el-radio>
@@ -22,23 +22,23 @@
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="4">
-				第
-				<el-input-number v-model='average01' :min="1" :max="4" /> 周的星期
+				{{$t('schedule.cron.num')}}
+				<el-input-number v-model='average01' :min="1" :max="4" /> {{$t('schedule.cron.week_of_weeks')}}
 				<el-input-number v-model='average02' :min="1" :max="7" />
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="5">
-				本月最后一个星期
+        {{$t('schedule.cron.last_week_of_the_month')}}
 				<el-input-number v-model='weekday' :min="1" :max="7" />
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="6">
-				指定
-				<el-select clearable v-model="checkboxList" placeholder="可多选" multiple style="width:100%">
+        {{$t('schedule.cron.specify')}}
+        <el-select clearable v-model="checkboxList" :placeholder="$t('schedule.cron.multi_select')" multiple style="width:100%">
 					<el-option v-for="(item,index) of weekList" :key="index" :value="index+1">{{item}}</el-option>
 				</el-select>
 			</el-radio>
@@ -58,7 +58,14 @@ export default {
 			average01: 1,
 			average02: 1,
 			checkboxList: [],
-			weekList: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+			weekList: [this.$t('commons.weeks_1'),
+        this.$t('commons.weeks_2'),
+        this.$t('commons.weeks_3'),
+        this.$t('commons.weeks_4'),
+        this.$t('commons.weeks_5'),
+        this.$t('commons.weeks_6'),
+        this.$t('commons.weeks_0'),
+      ],
 			checkNum: this.$options.propsData.check
 		}
 	},
@@ -142,19 +149,19 @@ export default {
 	computed: {
 		// 计算两个周期值
 		cycleTotal: function () {
-			this.cycle01 = this.checkNum(this.cycle01, 1, 7)
-			this.cycle02 = this.checkNum(this.cycle02, 1, 7)
+			this.checkNum(this.cycle01, 1, 7)
+			this.checkNum(this.cycle02, 1, 7)
 			return this.cycle01 + '-' + this.cycle02;
 		},
 		// 计算平均用到的值
 		averageTotal: function () {
-			this.average01 = this.checkNum(this.average01, 1, 4)
-			this.average02 = this.checkNum(this.average02, 1, 7)
+			this.checkNum(this.average01, 1, 4)
+			this.checkNum(this.average02, 1, 7)
 			return this.average01 + '#' + this.average02;
 		},
 		// 最近的工作日（格式）
 		weekdayCheck: function () {
-			this.weekday = this.checkNum(this.weekday, 1, 7)
+			this.checkNum(this.weekday, 1, 7)
 			return this.weekday;
 		},
 		// 计算勾选的checkbox值合集

@@ -63,6 +63,8 @@ public class UserController {
     @RequiresRoles(RoleConstants.ADMIN)
     public void deleteUser(@PathVariable(value = "userId") String userId) {
         userService.deleteUser(userId);
+        // 踢掉在线用户
+        SessionUtils.kickOutUser(userId);
     }
 
     @PostMapping("/special/update")
@@ -128,7 +130,6 @@ public class UserController {
     }
 
     @GetMapping("/list")
-    @RequiresRoles(value = {RoleConstants.ADMIN, RoleConstants.ORG_ADMIN, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public List<User> getUserList() {
         return userService.getUserList();
     }
@@ -250,7 +251,7 @@ public class UserController {
      * 组织成员列表不分页
      */
     @PostMapping("/org/member/list/all")
-    @RequiresRoles(value = {RoleConstants.ORG_ADMIN, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    @RequiresRoles(value = {RoleConstants.ORG_ADMIN, RoleConstants.TEST_MANAGER, RoleConstants.TEST_USER, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
     public List<User> getOrgMemberList(@RequestBody QueryOrgMemberRequest request) {
         return userService.getOrgMemberList(request);
     }
@@ -282,6 +283,12 @@ public class UserController {
             RoleConstants.TEST_USER, RoleConstants.TEST_VIEWER}, logical = Logical.OR)
     public List<User> getTestManagerAndTestUserList(@RequestBody QueryMemberRequest request) {
         return userService.getTestManagerAndTestUserList(request);
+    }
+
+    @GetMapping("/search/{condition}")
+    @RequiresRoles(value = {RoleConstants.ADMIN, RoleConstants.ORG_ADMIN, RoleConstants.TEST_MANAGER}, logical = Logical.OR)
+    public List<User> searchUser(@PathVariable String condition) {
+        return userService.searchUser(condition);
     }
 
 }

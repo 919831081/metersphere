@@ -3,29 +3,32 @@ package io.metersphere.performance.service;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import io.metersphere.base.domain.*;
-import io.metersphere.base.mapper.LoadTestMapper;
-import io.metersphere.base.mapper.LoadTestReportLogMapper;
-import io.metersphere.base.mapper.LoadTestReportMapper;
-import io.metersphere.base.mapper.LoadTestReportResultMapper;
+import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtLoadTestReportMapper;
 import io.metersphere.commons.constants.PerformanceTestStatus;
 import io.metersphere.commons.constants.ReportKeys;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.commons.utils.ServiceUtils;
+import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.controller.request.OrderRequest;
 import io.metersphere.dto.LogDetailDTO;
 import io.metersphere.dto.ReportDTO;
+import io.metersphere.i18n.Translator;
 import io.metersphere.performance.base.*;
+import io.metersphere.performance.controller.request.DeleteReportRequest;
 import io.metersphere.performance.controller.request.ReportRequest;
 import io.metersphere.performance.engine.Engine;
 import io.metersphere.performance.engine.EngineFactory;
+import io.metersphere.service.FileService;
 import io.metersphere.service.TestResourceService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,6 +48,10 @@ public class ReportService {
     private LoadTestReportLogMapper loadTestReportLogMapper;
     @Resource
     private TestResourceService testResourceService;
+    @Resource
+    private LoadTestReportDetailMapper loadTestReportDetailMapper;
+    @Resource
+    private FileService fileService;
 
     public List<ReportDTO> getRecentReportList(ReportRequest request) {
         List<OrderRequest> orders = new ArrayList<>();
@@ -53,11 +60,13 @@ public class ReportService {
         orderRequest.setType("desc");
         orders.add(orderRequest);
         request.setOrders(orders);
+        request.setProjectId(SessionUtils.getCurrentProjectId());
         return extLoadTestReportMapper.getReportList(request);
     }
 
     public List<ReportDTO> getReportList(ReportRequest request) {
         request.setOrders(ServiceUtils.getDefaultOrder(request.getOrders()));
+        request.setProjectId(SessionUtils.getCurrentProjectId());
         return extLoadTestReportMapper.getReportList(request);
     }
 
@@ -71,24 +80,41 @@ public class ReportService {
 
         LogUtil.info("Delete report started, report ID: %s" + reportId);
 
-        final Engine engine = EngineFactory.createEngine(loadTest);
-        if (engine == null) {
-            MSException.throwException(String.format("Delete report fail. create engine fail，report ID：%s", reportId));
+        try {
+            final Engine engine = EngineFactory.createEngine(loadTest);
+            if (engine == null) {
+                MSException.throwException(String.format("Delete report fail. create engine fail，report ID：%s", reportId));
+            }
+
+            String reportStatus = loadTestReport.getStatus();
+            boolean isRunning = StringUtils.equals(reportStatus, PerformanceTestStatus.Running.name());
+            boolean isStarting = StringUtils.equals(reportStatus, PerformanceTestStatus.Starting.name());
+            boolean isError = StringUtils.equals(reportStatus, PerformanceTestStatus.Error.name());
+            if (isRunning || isStarting || isError) {
+                LogUtil.info("Start stop engine, report status: %s" + reportStatus);
+                stopEngine(loadTest, engine);
+            }
+        } catch (Exception e) {
+            LogUtil.error(e.getMessage(), e);
         }
 
-        String reportStatus = loadTestReport.getStatus();
-        boolean isRunning = StringUtils.equals(reportStatus, PerformanceTestStatus.Running.name());
-        boolean isStarting = StringUtils.equals(reportStatus, PerformanceTestStatus.Starting.name());
-        boolean isError = StringUtils.equals(reportStatus, PerformanceTestStatus.Error.name());
-        if (isRunning || isStarting || isError) {
-            LogUtil.info("Start stop engine, report status: %s" + reportStatus);
-            stopEngine(loadTest, engine);
-        }
+        // delete load_test_report_result
+        LoadTestReportResultExample loadTestReportResultExample = new LoadTestReportResultExample();
+        loadTestReportResultExample.createCriteria().andReportIdEqualTo(reportId);
+        loadTestReportResultMapper.deleteByExample(loadTestReportResultExample);
+
+        // delete load_test_report_detail
+        LoadTestReportDetailExample example = new LoadTestReportDetailExample();
+        example.createCriteria().andReportIdEqualTo(reportId);
+        loadTestReportDetailMapper.deleteByExample(example);
+
+        // delete jtl file
+        fileService.deleteFileById(loadTestReport.getFileId());
 
         loadTestReportMapper.deleteByPrimaryKey(reportId);
     }
 
-    private void stopEngine(LoadTestWithBLOBs loadTest, Engine engine) {
+    public void stopEngine(LoadTestWithBLOBs loadTest, Engine engine) {
         engine.stop();
         loadTest.setStatus(PerformanceTestStatus.Saved.name());
         loadTestMapper.updateByPrimaryKeySelective(loadTest);
@@ -152,23 +178,28 @@ public class ReportService {
 
     public void checkReportStatus(String reportId) {
         LoadTestReport loadTestReport = loadTestReportMapper.selectByPrimaryKey(reportId);
-        String reportStatus = loadTestReport.getStatus();
+        String reportStatus = "";
+        if (loadTestReport != null) {
+            reportStatus = loadTestReport.getStatus();
+        }
         if (StringUtils.equals(PerformanceTestStatus.Error.name(), reportStatus)) {
             MSException.throwException("Report generation error!");
         }
     }
 
-    public LoadTestReport getLoadTestReport(String id) {
-        return extLoadTestReportMapper.selectByPrimaryKey(id);
+    public LoadTestReportWithBLOBs getLoadTestReport(String id) {
+        return loadTestReportMapper.selectByPrimaryKey(id);
     }
 
     public List<LogDetailDTO> getReportLogResource(String reportId) {
         List<LogDetailDTO> result = new ArrayList<>();
-        List<String> resourceIds = extLoadTestReportMapper.selectResourceId(reportId);
-        resourceIds.forEach(resourceId -> {
+        List<String> resourceIdAndIndexes = extLoadTestReportMapper.selectResourceId(reportId);
+        resourceIdAndIndexes.forEach(resourceIdAndIndex -> {
             LogDetailDTO detailDTO = new LogDetailDTO();
+            String[] split = StringUtils.split(resourceIdAndIndex, "_");
+            String resourceId = split[0];
             TestResource testResource = testResourceService.getTestResource(resourceId);
-            detailDTO.setResourceId(resourceId);
+            detailDTO.setResourceId(resourceIdAndIndex);
             if (testResource == null) {
                 detailDTO.setResourceName(resourceId);
                 result.add(detailDTO);
@@ -197,20 +228,67 @@ public class ReportService {
     public List<LoadTestReportLog> getReportLogs(String reportId, String resourceId) {
         LoadTestReportLogExample example = new LoadTestReportLogExample();
         example.createCriteria().andReportIdEqualTo(reportId).andResourceIdEqualTo(resourceId);
-        example.setOrderByClause("part desc");
+        example.setOrderByClause("part");
         return loadTestReportLogMapper.selectByExampleWithBLOBs(example);
     }
 
-    public byte[] downloadLog(String reportId, String resourceId) {
+    public void downloadLog(HttpServletResponse response, String reportId, String resourceId) throws Exception {
         LoadTestReportLogExample example = new LoadTestReportLogExample();
-        example.createCriteria().andReportIdEqualTo(reportId).andResourceIdEqualTo(resourceId);
-        List<LoadTestReportLog> loadTestReportLogs = loadTestReportLogMapper.selectByExampleWithBLOBs(example);
+        LoadTestReportLogExample.Criteria criteria = example.createCriteria();
+        criteria.andReportIdEqualTo(reportId).andResourceIdEqualTo(resourceId);
+        example.setOrderByClause("part");
 
-        String content = loadTestReportLogs.stream().map(LoadTestReportLog::getContent).reduce("", (a, b) -> a + b);
-        return content.getBytes();
+        long count = loadTestReportLogMapper.countByExample(example);
+
+        try (OutputStream outputStream = response.getOutputStream()) {
+            response.setContentType("application/x-download");
+            response.addHeader("Content-Disposition", "attachment;filename=jmeter.log");
+            for (long i = 1; i <= count; i++) {
+                example.clear();
+                LoadTestReportLogExample.Criteria innerCriteria = example.createCriteria();
+                innerCriteria.andReportIdEqualTo(reportId).andResourceIdEqualTo(resourceId).andPartEqualTo(i);
+
+                List<LoadTestReportLog> loadTestReportLogs = loadTestReportLogMapper.selectByExampleWithBLOBs(example);
+                LoadTestReportLog content = loadTestReportLogs.get(0);
+                outputStream.write(content.getContent().getBytes());
+                outputStream.flush();
+            }
+        }
     }
 
-    public LoadTestReport getReport(String reportId) {
+    public LoadTestReportWithBLOBs getReport(String reportId) {
         return loadTestReportMapper.selectByPrimaryKey(reportId);
+    }
+
+    public void updateStatus(String reportId, String status) {
+        LoadTestReportWithBLOBs report = new LoadTestReportWithBLOBs();
+        report.setId(reportId);
+        report.setStatus(status);
+        loadTestReportMapper.updateByPrimaryKeySelective(report);
+    }
+
+    public void deleteReportBatch(DeleteReportRequest reportRequest) {
+        List<String> ids = reportRequest.getIds();
+        ids.forEach(this::deleteReport);
+    }
+
+    public List<ChartsData> getErrorChartData(String id) {
+        checkReportStatus(id);
+        String content = getContent(id, ReportKeys.ErrorsChart);
+        return JSON.parseArray(content, ChartsData.class);
+    }
+
+    public List<ChartsData> getResponseCodeChartData(String id) {
+        checkReportStatus(id);
+        String content = getContent(id, ReportKeys.ResponseCodeChart);
+        return JSON.parseArray(content, ChartsData.class);
+    }
+
+    public byte[] downloadJtl(String reportId) {
+        LoadTestReportWithBLOBs report = getReport(reportId);
+        if (StringUtils.isBlank(report.getFileId())) {
+            throw new RuntimeException(Translator.get("load_test_report_file_not_exist"));
+        }
+        return fileService.loadFileAsBytes(report.getFileId());
     }
 }

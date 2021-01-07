@@ -30,3 +30,5 @@ target
 .settings
 .project
 .classpath
+.jython_cache
+qywx.json

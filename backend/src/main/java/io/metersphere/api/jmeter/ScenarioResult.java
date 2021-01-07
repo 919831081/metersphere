@@ -8,7 +8,7 @@ import java.util.List;
 @Data
 public class ScenarioResult {
 
-    private String id;
+    private Integer id;
 
     private String name;
 
@@ -42,5 +42,9 @@ public class ScenarioResult {
 
     public void addPassAssertions(int count) {
         this.passAssertions += count;
+    }
+
+    public int getTotal() {
+        return error + success;
     }
 }

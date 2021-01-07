@@ -2,8 +2,8 @@ package io.metersphere.performance.controller;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
-import io.metersphere.base.domain.LoadTestReport;
 import io.metersphere.base.domain.LoadTestReportLog;
+import io.metersphere.base.domain.LoadTestReportWithBLOBs;
 import io.metersphere.commons.constants.RoleConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
@@ -11,6 +11,7 @@ import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.dto.LogDetailDTO;
 import io.metersphere.dto.ReportDTO;
 import io.metersphere.performance.base.*;
+import io.metersphere.performance.controller.request.DeleteReportRequest;
 import io.metersphere.performance.controller.request.ReportRequest;
 import io.metersphere.performance.service.ReportService;
 import org.apache.shiro.authz.annotation.Logical;
@@ -21,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 
 @RestController
@@ -36,6 +38,7 @@ public class PerformanceReportController {
         String currentWorkspaceId = SessionUtils.getCurrentWorkspaceId();
         ReportRequest request = new ReportRequest();
         request.setWorkspaceId(currentWorkspaceId);
+        request.setUserId(SessionUtils.getUserId());
         // 最近 `count` 个项目
         PageHelper.startPage(1, count);
         return reportService.getRecentReportList(request);
@@ -50,6 +53,7 @@ public class PerformanceReportController {
     }
 
     @PostMapping("/delete/{reportId}")
+    @RequiresRoles(value = {RoleConstants.TEST_MANAGER, RoleConstants.TEST_USER}, logical = Logical.OR)
     public void deleteReport(@PathVariable String reportId) {
         reportService.deleteReport(reportId);
     }
@@ -95,8 +99,18 @@ public class PerformanceReportController {
         return reportService.getResponseTimeChartData(reportId);
     }
 
+    @GetMapping("/content/error_chart/{reportId}")
+    public List<ChartsData> getErrorChartData(@PathVariable String reportId) {
+        return reportService.getErrorChartData(reportId);
+    }
+
+    @GetMapping("/content/response_code_chart/{reportId}")
+    public List<ChartsData> getResponseCodeChartData(@PathVariable String reportId) {
+        return reportService.getResponseCodeChartData(reportId);
+    }
+
     @GetMapping("/{reportId}")
-    public LoadTestReport getLoadTestReport(@PathVariable String reportId) {
+    public LoadTestReportWithBLOBs getLoadTestReport(@PathVariable String reportId) {
         return reportService.getLoadTestReport(reportId);
     }
 
@@ -107,16 +121,27 @@ public class PerformanceReportController {
 
     @GetMapping("log/{reportId}/{resourceId}/{goPage}")
     public Pager<List<LoadTestReportLog>> logs(@PathVariable String reportId, @PathVariable String resourceId, @PathVariable int goPage) {
-        Page<Object> page = PageHelper.startPage(goPage, 10, true);
+        Page<Object> page = PageHelper.startPage(goPage, 1, true);
         return PageUtils.setPageInfo(page, reportService.getReportLogs(reportId, resourceId));
     }
 
     @GetMapping("log/download/{reportId}/{resourceId}")
-    public ResponseEntity<byte[]> downloadLog(@PathVariable String reportId, @PathVariable String resourceId) {
-        byte[] bytes = reportService.downloadLog(reportId, resourceId);
+    public void downloadLog(@PathVariable String reportId, @PathVariable String resourceId, HttpServletResponse response) throws Exception {
+        reportService.downloadLog(response, reportId, resourceId);
+    }
+
+    @PostMapping("/batch/delete")
+    @RequiresRoles(value = {RoleConstants.TEST_MANAGER, RoleConstants.TEST_USER}, logical = Logical.OR)
+    public void deleteReportBatch(@RequestBody DeleteReportRequest reportRequest) {
+        reportService.deleteReportBatch(reportRequest);
+    }
+
+    @GetMapping("/jtl/download/{reportId}")
+    public ResponseEntity<byte[]> downloadJtl(@PathVariable String reportId) {
+        byte[] bytes = reportService.downloadJtl(reportId);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"jmeter.log\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + reportId + ".jtl\"")
                 .body(bytes);
     }
 }

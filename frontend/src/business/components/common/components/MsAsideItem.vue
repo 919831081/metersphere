@@ -1,5 +1,5 @@
 <template>
-  <ms-aside-container :width="width + 'px'">
+  <ms-aside-container :enable-aside-hidden="false" :width="width + 'px'">
     <div class="title-bar" :style="{'height': titleBarHeight + 'px'}">
       <slot name="title">
         <span :style="{'line-height': titleBarHeight - 10 + 'px'}" class="title-left">
@@ -10,14 +10,10 @@
         </span>
       </slot>
     </div>
-
     <div :style="{'height': itemBarHeight + 'px'}" v-for="(item, index) in data" :key="index" class="item-bar" @click="itemSelected(index, item)" :class="{'item-selected' : index == selectIndex}">
-<!--      <span :style="{'line-height': itemBarHeight - 10 + 'px'}" class="item-left">-->
-<!--&lt;!&ndash;        {{item.name}}&ndash;&gt;-->
-<!--      </span>-->
-      <input class="item-input" :style="{'height': itemBarHeight - 12 + 'px', 'line-height': itemBarHeight - 12 + 'px', 'width': width - 90 + 'px'}" v-model="item.name" placeholder="请输入内容"/>
+      <input class="item-input" :style="{'height': itemBarHeight - 12 + 'px', 'line-height': itemBarHeight - 12 + 'px', 'width': width - 90 + 'px'}" v-model="item.name" :placeholder="$t('commons.input_content')"/>
       <span :style="{'line-height': itemBarHeight - 10 + 'px'}" class="item-right">
-        <i v-for="(operator, index) in itemOperators" :key="index" :class="operator.icon" @click="operator.func(item)"/>
+        <i v-for="(operator, operatorIndex) in itemOperators" :key="operatorIndex" :class="operator.icon" @click.stop="operator.func(item, index)"/>
       </span>
     </div>
   </ms-aside-container>
@@ -61,6 +57,10 @@
               }
             ];
           }
+        },
+        enableAsideHidden: {
+          type: Boolean,
+          default: true
         },
       },
       methods: {

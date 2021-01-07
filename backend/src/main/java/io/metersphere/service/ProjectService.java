@@ -1,5 +1,6 @@
 package io.metersphere.service;
 
+import io.metersphere.api.dto.DeleteAPITestRequest;
 import io.metersphere.api.dto.QueryAPITestRequest;
 import io.metersphere.api.service.APITestService;
 import io.metersphere.base.domain.LoadTest;
@@ -16,13 +17,14 @@ import io.metersphere.controller.request.ProjectRequest;
 import io.metersphere.dto.ProjectDTO;
 import io.metersphere.i18n.Translator;
 import io.metersphere.performance.service.PerformanceTestService;
-import io.metersphere.track.request.testcase.QueryTestPlanRequest;
 import io.metersphere.track.request.testplan.DeleteTestPlanRequest;
 import io.metersphere.track.service.TestCaseService;
+import io.metersphere.track.service.TestPlanProjectService;
 import io.metersphere.track.service.TestPlanService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
 import java.util.List;
@@ -54,6 +56,8 @@ public class ProjectService {
     private TestCaseService testCaseService;
     @Resource
     private APITestService apiTestService;
+    @Resource
+    private TestPlanProjectService testPlanProjectService;
 
     public Project addProject(Project project) {
         if (StringUtils.isBlank(project.getName())) {
@@ -93,24 +97,26 @@ public class ProjectService {
         loadTestIdList.forEach(loadTestId -> {
             DeleteTestPlanRequest deleteTestPlanRequest = new DeleteTestPlanRequest();
             deleteTestPlanRequest.setId(loadTestId);
+            deleteTestPlanRequest.setForceDelete(true);
             performanceTestService.delete(deleteTestPlanRequest);
         });
 
-        // TODO 删除项目下 测试跟踪 相关
+        // 删除项目下 测试跟踪 相关
         deleteTrackResourceByProjectId(projectId);
 
-        // TODO 删除项目下 接口测试 相关
+        // 删除项目下 接口测试 相关
         deleteAPIResourceByProjectId(projectId);
         // delete project
         projectMapper.deleteByPrimaryKey(projectId);
     }
 
     private void deleteTrackResourceByProjectId(String projectId) {
-        QueryTestPlanRequest request = new QueryTestPlanRequest();
-        request.setProjectId(projectId);
-        testPlanService.listTestPlan(request).forEach(testPlan -> {
-            testPlanService.deleteTestPlan(testPlan.getId());
-        });
+        List<String> testPlanIds = testPlanProjectService.getPlanIdByProjectId(projectId);
+        if (!CollectionUtils.isEmpty(testPlanIds)) {
+            testPlanIds.forEach(testPlanId -> {
+                testPlanService.deleteTestPlan(testPlanId);
+            });
+        }
         testCaseService.deleteTestCaseByProjectId(projectId);
     }
 
@@ -118,7 +124,10 @@ public class ProjectService {
         QueryAPITestRequest request = new QueryAPITestRequest();
         request.setProjectId(projectId);
         apiTestService.list(request).forEach(test -> {
-            apiTestService.delete(test.getId());
+            DeleteAPITestRequest deleteAPITestRequest = new DeleteAPITestRequest();
+            deleteAPITestRequest.setId(test.getId());
+            deleteAPITestRequest.setForceDelete(true);
+            apiTestService.delete(deleteAPITestRequest);
         });
     }
 
@@ -129,7 +138,7 @@ public class ProjectService {
         projectMapper.updateByPrimaryKeySelective(project);
     }
 
-    private void checkProjectExist (Project project) {
+    private void checkProjectExist(Project project) {
         if (project.getName() != null) {
             ProjectExample example = new ProjectExample();
             example.createCriteria()

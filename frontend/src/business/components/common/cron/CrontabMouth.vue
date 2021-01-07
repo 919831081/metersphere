@@ -2,30 +2,30 @@
 	<el-form size='small'>
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="1">
-				月，允许的通配符[, - * /]
+        {{$t('schedule.cron.month')}}，{{$t('schedule.cron.allowed_wildcards')}}
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="2">
-				周期从
+        {{$t('schedule.cron.period')}} {{$t('schedule.cron.from')}}
 				<el-input-number v-model='cycle01' :min="1" :max="12" /> -
-				<el-input-number v-model='cycle02' :min="1" :max="12" /> 月
+				<el-input-number v-model='cycle02' :min="1" :max="12" /> {{$t('schedule.cron.month')}}
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="3">
-				从
-				<el-input-number v-model='average01' :min="1" :max="12" /> 月开始，每
-				<el-input-number v-model='average02' :min="1" :max="12" /> 月月执行一次
+        {{$t('schedule.cron.from')}}
+				<el-input-number v-model='average01' :min="1" :max="12" /> {{$t('schedule.cron.month')}}{{$t('schedule.cron.start')}}，{{$t('schedule.cron.every')}}
+				<el-input-number v-model='average02' :min="1" :max="12" /> {{$t('schedule.cron.month')}}{{$t('schedule.cron.execute_once')}}
 			</el-radio>
 		</el-form-item>
 
 		<el-form-item>
 			<el-radio v-model='radioValue' :label="4">
-				指定
-				<el-select clearable v-model="checkboxList" placeholder="可多选" multiple style="width:100%">
+        {{$t('schedule.cron.specify')}}
+				<el-select clearable v-model="checkboxList" :placeholder="$t('schedule.cron.multi_select')" multiple style="width:100%">
 					<el-option v-for="item in 12" :key="item" :value="item">{{item}}</el-option>
 				</el-select>
 			</el-radio>
@@ -108,14 +108,14 @@ export default {
 	computed: {
 		// 计算两个周期值
 		cycleTotal: function () {
-			this.cycle01 = this.checkNum(this.cycle01, 1, 12)
-			this.cycle02 = this.checkNum(this.cycle02, 1, 12)
+			this.checkNum(this.cycle01, 1, 12)
+			this.checkNum(this.cycle02, 1, 12)
 			return this.cycle01 + '-' + this.cycle02;
 		},
 		// 计算平均用到的值
 		averageTotal: function () {
-			this.average01 = this.checkNum(this.average01, 1, 12)
-			this.average02 = this.checkNum(this.average02, 1, 12)
+			this.checkNum(this.average01, 1, 12)
+			this.checkNum(this.average02, 1, 12)
 			return this.average01 + '/' + this.average02;
 		},
 		// 计算勾选的checkbox值合集

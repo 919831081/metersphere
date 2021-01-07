@@ -12,11 +12,14 @@ import java.util.Map;
 public class QueryAPITestRequest {
 
     private String id;
+    private String excludeId;
     private String projectId;
     private String name;
     private String workspaceId;
+    private String userId;
     private boolean recent = false;
     private List<OrderRequest> orders;
     private Map<String, List<String>> filters;
-
+    private Map<String, Object> combine;
+    private List<String> ids;
 }

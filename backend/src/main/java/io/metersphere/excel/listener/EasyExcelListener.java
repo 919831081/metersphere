@@ -7,37 +7,29 @@ import com.alibaba.excel.exception.ExcelAnalysisException;
 import com.alibaba.excel.util.StringUtils;
 import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.excel.domain.ExcelErrData;
-import io.metersphere.excel.utils.EasyExcelI18nTranslator;
+import io.metersphere.excel.domain.TestCaseExcelData;
 import io.metersphere.excel.utils.ExcelValidateHelper;
 import io.metersphere.i18n.Translator;
 
-import java.lang.reflect.*;
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.*;
 
-public abstract class EasyExcelListener <T> extends AnalysisEventListener<T> {
+public abstract class EasyExcelListener<T> extends AnalysisEventListener<T> {
 
     protected List<ExcelErrData<T>> errList = new ArrayList<>();
 
     protected List<T> list = new ArrayList<>();
 
-    protected EasyExcelI18nTranslator easyExcelI18nTranslator;
+    protected List<TestCaseExcelData> excelDataList = new ArrayList<>();
 
     /**
      * 每隔2000条存储数据库，然后清理list ，方便内存回收
      */
     protected static final int BATCH_COUNT = 2000;
 
-    protected Class<T> clazz;
-
-    public EasyExcelListener(){
-        Type type = getClass().getGenericSuperclass();
-        this.clazz = (Class<T>) ((ParameterizedType) type).getActualTypeArguments()[0];
-        //防止多线程修改运行时类注解后，saveOriginalExcelProperty保存的是修改后的值
-        synchronized (EasyExcelI18nTranslator.class) {
-            this.easyExcelI18nTranslator = new EasyExcelI18nTranslator(this.clazz);
-            this.easyExcelI18nTranslator.translateExcelProperty();
-        }
-    }
+    protected Class clazz;
 
     /**
      * 每条数据解析都会调用
@@ -61,7 +53,7 @@ public abstract class EasyExcelListener <T> extends AnalysisEventListener<T> {
 
         if (!StringUtils.isEmpty(errMsg)) {
             ExcelErrData excelErrData = new ExcelErrData(t, rowIndex,
-                    Translator.get("number")+ " " + rowIndex + " " + Translator.get("row") +  Translator.get("error")
+                    Translator.get("number") + " " + rowIndex + " " + Translator.get("row") + Translator.get("error")
                             + "：" + errMsg);
             errList.add(excelErrData);
         } else {
@@ -77,6 +69,7 @@ public abstract class EasyExcelListener <T> extends AnalysisEventListener<T> {
     /**
      * 可重写该方法
      * 自定义校验规则
+     *
      * @param data
      * @param errMsg
      * @return
@@ -98,18 +91,19 @@ public abstract class EasyExcelListener <T> extends AnalysisEventListener<T> {
 
 
     /**
-      * 校验excel头部
-      * @param headMap 传入excel的头部（第一行数据）数据的index,name
-      * @param context
-      */
+     * 校验excel头部
+     *
+     * @param headMap 传入excel的头部（第一行数据）数据的index,name
+     * @param context
+     */
     @Override
     public void invokeHeadMap(Map<Integer, String> headMap, AnalysisContext context) {
-        if (clazz != null){
+        if (clazz != null) {
             try {
                 Set<String> fieldNameSet = getFieldNameSet(clazz);
                 Collection<String> values = headMap.values();
                 for (String key : fieldNameSet) {
-                    if (!values.contains(key)){
+                    if (!values.contains(key)) {
                         throw new ExcelAnalysisException(Translator.get("missing_header_information") + ":" + key);
                     }
                 }
@@ -121,17 +115,17 @@ public abstract class EasyExcelListener <T> extends AnalysisEventListener<T> {
     }
 
     /**
-      * @description: 获取注解里ExcelProperty的value
+     * @description: 获取注解里ExcelProperty的value
      */
     public Set<String> getFieldNameSet(Class clazz) throws NoSuchFieldException {
         Set<String> result = new HashSet<>();
         Field field;
         Field[] fields = clazz.getDeclaredFields();
-        for (int i = 0; i < fields.length ; i++) {
+        for (int i = 0; i < fields.length; i++) {
             field = clazz.getDeclaredField(fields[i].getName());
             field.setAccessible(true);
             ExcelProperty excelProperty = field.getAnnotation(ExcelProperty.class);
-            if(excelProperty != null){
+            if (excelProperty != null) {
                 StringBuilder value = new StringBuilder();
                 for (String v : excelProperty.value()) {
                     value.append(v);
@@ -146,7 +140,4 @@ public abstract class EasyExcelListener <T> extends AnalysisEventListener<T> {
         return errList;
     }
 
-    public void close () {
-        this.easyExcelI18nTranslator.resetExcelProperty();
-    }
 }

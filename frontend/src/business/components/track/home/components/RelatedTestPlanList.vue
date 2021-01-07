@@ -1,9 +1,11 @@
 <template>
   <home-base-component :title="$t('test_track.home.my_plan')" v-loading>
     <el-table
+      class="adjust-table"
+      border
       :data="tableData"
       @row-click="intoPlan"
-      v-loading="result.loading">
+      v-loading="result.loading" height="300px">
       <el-table-column
         prop="name"
         fixed
@@ -56,11 +58,11 @@
           <plan-stage-table-item :stage="scope.row.stage"/>
         </template>
       </el-table-column>
-      <el-table-column
-        prop="projectName"
-        :label="$t('test_track.plan.plan_project')"
-        show-overflow-tooltip>
-      </el-table-column>
+<!--      <el-table-column-->
+<!--        prop="projectName"-->
+<!--        :label="$t('test_track.plan.plan_project')"-->
+<!--        show-overflow-tooltip>-->
+<!--      </el-table-column>-->
 
     </el-table>
 
@@ -72,6 +74,7 @@
     import PlanStatusTableItem from "../../common/tableItems/plan/PlanStatusTableItem";
     import PlanStageTableItem from "../../common/tableItems/plan/PlanStageTableItem";
     import MsTableOperator from "../../../common/components/MsTableOperator";
+    import {getCurrentProjectID} from "../../../../../common/js/utils";
     export default {
       name: "RelatedTestPlanList",
       components: {MsTableOperator, PlanStageTableItem, PlanStatusTableItem, HomeBaseComponent},
@@ -86,8 +89,17 @@
       },
       methods: {
         initTableData() {
-          this.result = this.$post('/test/plan/list/all/relate', this.condition, response => {
+          if (!getCurrentProjectID()) {
+            return;
+          }
+          this.result = this.$post('/test/plan/list/all/relate', {}, response => {
             this.tableData = response.data;
+            // for (let i = 0; i < this.tableData.length; i++) {
+            //   let path = "/test/plan/project/name/" + this.tableData[i].id;
+            //   this.$get(path, res => {
+            //     this.$set(this.tableData[i], "projectName", res.data);
+            //   })
+            // }
           });
         },
         intoPlan(row, event, column) {

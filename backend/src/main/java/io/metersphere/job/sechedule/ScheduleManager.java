@@ -1,10 +1,16 @@
 package io.metersphere.job.sechedule;
 
+import io.metersphere.commons.constants.ScheduleGroup;
 import io.metersphere.commons.utils.LogUtil;
+import org.python.antlr.ast.Str;
 import org.quartz.*;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Component
 public class ScheduleManager {
@@ -14,6 +20,7 @@ public class ScheduleManager {
 
     /**
      * 添加 simpleJob
+     *
      * @param jobKey
      * @param triggerKey
      * @param cls
@@ -22,7 +29,7 @@ public class ScheduleManager {
      * @throws SchedulerException
      */
     public void addSimpleJob(JobKey jobKey, TriggerKey triggerKey, Class<? extends Job> cls, int repeatIntervalTime,
-                                    JobDataMap jobDataMap) throws SchedulerException {
+                             JobDataMap jobDataMap) throws SchedulerException {
 
         JobBuilder jobBuilder = JobBuilder.newJob(cls).withIdentity(jobKey);
 
@@ -38,18 +45,6 @@ public class ScheduleManager {
                 .startNow().build();
 
         scheduler.scheduleJob(jd, trigger);
-
-        try {
-
-            if (!scheduler.isShutdown()) {
-                scheduler.start();
-            }
-
-        } catch (SchedulerException e) {
-            LogUtil.error(e.getMessage(), e);
-            e.printStackTrace();
-            throw new RuntimeException(e);
-        }
     }
 
     public void addSimpleJob(JobKey jobKey, TriggerKey triggerKey, Class<? extends Job> cls, int repeatIntervalTime) throws SchedulerException {
@@ -58,6 +53,7 @@ public class ScheduleManager {
 
     /**
      * 添加 cronJob
+     *
      * @param jobKey
      * @param triggerKey
      * @param jobClass
@@ -87,9 +83,6 @@ public class ScheduleManager {
 
             scheduler.scheduleJob(jobDetail, trigger);
 
-            if (!scheduler.isShutdown()) {
-                scheduler.start();
-            }
         } catch (Exception e) {
             LogUtil.error(e.getMessage(), e);
             throw new RuntimeException(e);
@@ -102,6 +95,7 @@ public class ScheduleManager {
 
     /**
      * 修改 cronTrigger
+     *
      * @param triggerKey
      * @param cron
      * @throws SchedulerException
@@ -149,6 +143,7 @@ public class ScheduleManager {
 
     /**
      * 修改simpleTrigger触发器的触发时间
+     *
      * @param triggerKey
      * @param repeatIntervalTime
      * @throws SchedulerException
@@ -199,12 +194,10 @@ public class ScheduleManager {
     }
 
     /**
-     *
-     * @Title:
-     * @Description: 根据job和trigger删除任务
-     *
      * @param jobKey
      * @param triggerKey
+     * @Title:
+     * @Description: 根据job和trigger删除任务
      */
     public void removeJob(JobKey jobKey, TriggerKey triggerKey) {
 
@@ -248,6 +241,7 @@ public class ScheduleManager {
 
     /**
      * 新增或者修改 simpleJob
+     *
      * @param jobKey
      * @param triggerKey
      * @param clz
@@ -256,7 +250,7 @@ public class ScheduleManager {
      * @throws SchedulerException
      */
     public void addOrUpdateSimpleJob(JobKey jobKey, TriggerKey triggerKey, Class clz,
-                                            int intervalTime, JobDataMap jobDataMap) throws SchedulerException {
+                                     int intervalTime, JobDataMap jobDataMap) throws SchedulerException {
 
         if (scheduler.checkExists(triggerKey)) {
             modifySimpleJobTime(triggerKey, intervalTime);
@@ -273,6 +267,7 @@ public class ScheduleManager {
 
     /**
      * 添加或修改 cronJob
+     *
      * @param jobKey
      * @param triggerKey
      * @param jobClass
@@ -301,5 +296,23 @@ public class ScheduleManager {
         jobDataMap.put("expression", expression);
         jobDataMap.put("userId", userId);
         return jobDataMap;
+    }
+
+    public Object getCurrentlyExecutingJobs(){
+        Map<String, String> returnMap = new HashMap<>();
+        try {
+            List<JobExecutionContext> currentJobs = scheduler.getCurrentlyExecutingJobs();
+            for (JobExecutionContext jobCtx : currentJobs) {
+                String jobName = jobCtx.getJobDetail().getKey().getName();
+                String groupName = jobCtx.getJobDetail().getJobClass().getName();
+
+                returnMap.put("jobName", jobName);
+                returnMap.put("groupName", groupName);
+            }
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+
+        return returnMap;
     }
 }

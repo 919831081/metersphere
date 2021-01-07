@@ -5,9 +5,16 @@
     </span>
     <template v-slot:dropdown>
       <el-dropdown-menu>
-        <el-dropdown-item command="personal">{{$t('commons.personal_information')}}</el-dropdown-item>
-        <el-dropdown-item command="logout">{{$t('commons.exit_system')}}</el-dropdown-item>
-        <el-dropdown-item command="about">{{$t('commons.about_us')}} <i class="el-icon-info"/></el-dropdown-item>
+        <el-dropdown-item command="personal">{{ $t('commons.personal_information') }}</el-dropdown-item>
+        <el-dropdown-item command="about">{{ $t('commons.about_us') }} <i class="el-icon-info"/></el-dropdown-item>
+        <el-dropdown-item command="help">{{ $t('commons.help_documentation') }}</el-dropdown-item>
+        <el-dropdown-item command="old" v-show=isReadOnly @click.native="changeBar('old')">
+          {{ $t('commons.cut_back_old_version') }}
+        </el-dropdown-item>
+        <el-dropdown-item command="new" v-show=!isReadOnly @click.native="changeBar('new')">
+          {{ $t('commons.cut_back_new_version') }}
+        </el-dropdown-item>
+        <el-dropdown-item command="logout">{{ $t('commons.exit_system') }}</el-dropdown-item>
       </el-dropdown-menu>
     </template>
 
@@ -18,10 +25,16 @@
 <script>
   import {getCurrentUser} from "../../../../common/js/utils";
   import AboutUs from "./AboutUs";
+  import axios from "axios";
 
   export default {
     name: "MsUser",
     components: {AboutUs},
+    data() {
+      return {
+        isReadOnly: this.$store.state.isReadOnly.flag
+      }
+    },
     computed: {
       currentUser: () => {
         return getCurrentUser();
@@ -35,7 +48,17 @@
             this.$router.push('/setting/personsetting').catch(error => error);
             break;
           case "logout":
-            this.$get("/signout", function () {
+            axios.get("/signout").then(response => {
+              if (response.data.success) {
+                localStorage.clear();
+                window.location.href = "/login";
+              } else {
+                if (response.data.message === 'sso') {
+                  localStorage.clear();
+                  window.location.href = "/sso/logout"
+                }
+              }
+            }).catch(error => {
               localStorage.clear();
               window.location.href = "/login";
             });
@@ -43,9 +66,23 @@
           case "about":
             this.$refs.aboutUs.open();
             break;
+          case "help":
+            window.location.href = "https://metersphere.io/docs/index.html";
+            break;
           default:
             break;
         }
+      },
+      changeBar(item) {
+        this.isReadOnly = !this.isReadOnly
+        this.$store.commit('setFlag', this.isReadOnly);
+        this.$store.commit('setValue', item);
+        if(item=="old"){
+          window.location.href = "/#/api/home_obsolete";
+        }else {
+          window.location.href = "/#/api/home";
+        }
+
       }
     }
   }

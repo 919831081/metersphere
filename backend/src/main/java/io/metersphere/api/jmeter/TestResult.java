@@ -20,7 +20,7 @@ public class TestResult {
 
     private int passAssertions = 0;
 
-    private final List<ScenarioResult> scenarios = new ArrayList<>();
+    private List<ScenarioResult> scenarios = new ArrayList<>();
 
     public void addError(int count) {
         this.error += count;
@@ -37,5 +37,6 @@ public class TestResult {
     public void addPassAssertions(int count) {
         this.passAssertions += count;
     }
+
 
 }

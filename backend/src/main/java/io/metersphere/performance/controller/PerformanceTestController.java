@@ -9,9 +9,12 @@ import io.metersphere.commons.constants.RoleConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.controller.request.QueryScheduleRequest;
 import io.metersphere.dto.DashboardTestDTO;
 import io.metersphere.dto.LoadTestDTO;
+import io.metersphere.dto.ScheduleDao;
 import io.metersphere.performance.service.PerformanceTestService;
+import io.metersphere.service.CheckPermissionService;
 import io.metersphere.service.FileService;
 import io.metersphere.track.request.testplan.*;
 import org.apache.shiro.authz.annotation.Logical;
@@ -33,12 +36,15 @@ public class PerformanceTestController {
     private PerformanceTestService performanceTestService;
     @Resource
     private FileService fileService;
+    @Resource
+    private CheckPermissionService checkPermissionService;
 
     @GetMapping("recent/{count}")
     public List<LoadTestDTO> recentTestPlans(@PathVariable int count) {
         String currentWorkspaceId = SessionUtils.getCurrentWorkspaceId();
         QueryTestPlanRequest request = new QueryTestPlanRequest();
         request.setWorkspaceId(currentWorkspaceId);
+        request.setUserId(SessionUtils.getUserId());
         PageHelper.startPage(1, count, true);
         return performanceTestService.recentTestPlans(request);
     }
@@ -47,17 +53,20 @@ public class PerformanceTestController {
     public Pager<List<LoadTestDTO>> list(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestPlanRequest request) {
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
         request.setWorkspaceId(SessionUtils.getCurrentWorkspaceId());
+        request.setProjectId(SessionUtils.getCurrentProjectId());
         return PageUtils.setPageInfo(page, performanceTestService.list(request));
     }
 
     @GetMapping("/list/{projectId}")
     public List<LoadTest> list(@PathVariable String projectId) {
+        checkPermissionService.checkProjectOwner(projectId);
         return performanceTestService.getLoadTestByProjectId(projectId);
     }
 
-    /*查询某个测试状态*/
-    @GetMapping("/list/all/{testId}")
+
+    @GetMapping("/state/get/{testId}")
     public LoadTest listByTestId(@PathVariable String testId) {
+        checkPermissionService.checkPerformanceTestOwner(testId);
         return performanceTestService.getLoadTestBytestId(testId);
     }
 
@@ -66,6 +75,7 @@ public class PerformanceTestController {
             @RequestPart("request") SaveTestPlanRequest request,
             @RequestPart(value = "file") List<MultipartFile> files
     ) {
+        checkPermissionService.checkProjectOwner(request.getProjectId());
         return performanceTestService.save(request, files);
     }
 
@@ -74,26 +84,37 @@ public class PerformanceTestController {
             @RequestPart("request") EditTestPlanRequest request,
             @RequestPart(value = "file", required = false) List<MultipartFile> files
     ) {
+        checkPermissionService.checkPerformanceTestOwner(request.getId());
         return performanceTestService.edit(request, files);
     }
 
     @GetMapping("/get/{testId}")
     public LoadTestDTO get(@PathVariable String testId) {
+        checkPermissionService.checkPerformanceTestOwner(testId);
         return performanceTestService.get(testId);
     }
 
     @GetMapping("/get-advanced-config/{testId}")
     public String getAdvancedConfiguration(@PathVariable String testId) {
+        checkPermissionService.checkPerformanceTestOwner(testId);
         return performanceTestService.getAdvancedConfiguration(testId);
     }
 
     @GetMapping("/get-load-config/{testId}")
     public String getLoadConfiguration(@PathVariable String testId) {
+        checkPermissionService.checkPerformanceTestOwner(testId);
         return performanceTestService.getLoadConfiguration(testId);
+    }
+
+    @GetMapping("/get-jmx-content/{testId}")
+    public String getJmxContent(@PathVariable String testId) {
+        checkPermissionService.checkPerformanceTestOwner(testId);
+        return performanceTestService.getJmxContent(testId);
     }
 
     @PostMapping("/delete")
     public void delete(@RequestBody DeleteTestPlanRequest request) {
+        checkPermissionService.checkPerformanceTestOwner(request.getId());
         performanceTestService.delete(request);
     }
 
@@ -102,13 +123,14 @@ public class PerformanceTestController {
         return performanceTestService.run(request);
     }
 
-    @GetMapping("stop/{reportId}")
-    public void stopTest(@PathVariable String reportId) {
-        performanceTestService.stopTest(reportId);
+    @GetMapping("stop/{reportId}/{forceStop}")
+    public void stopTest(@PathVariable String reportId, @PathVariable boolean forceStop) {
+        performanceTestService.stopTest(reportId, forceStop);
     }
 
     @GetMapping("/file/metadata/{testId}")
     public List<FileMetadata> getFileMetadata(@PathVariable String testId) {
+        checkPermissionService.checkPerformanceTestOwner(testId);
         return fileService.getFileMetadataByTestId(testId);
     }
 
@@ -141,4 +163,14 @@ public class PerformanceTestController {
         performanceTestService.updateSchedule(request);
     }
 
+    @PostMapping("/list/schedule/{goPage}/{pageSize}")
+    public List<ScheduleDao> listSchedule(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryScheduleRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return performanceTestService.listSchedule(request);
+    }
+
+    @PostMapping("/list/schedule")
+    public List<ScheduleDao> listSchedule(@RequestBody QueryScheduleRequest request) {
+        return performanceTestService.listSchedule(request);
+    }
 }

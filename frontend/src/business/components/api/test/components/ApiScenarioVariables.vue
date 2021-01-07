@@ -5,12 +5,17 @@
     </span>
     <div class="kv-row" v-for="(item, index) in items" :key="index">
       <el-row type="flex" :gutter="20" justify="space-between" align="middle">
+        <el-col class="kv-checkbox">
+          <input type="checkbox" v-if="!isDisable(index)" @change="change" :value="item.uuid" v-model="item.enable"
+                 :disabled="isDisable(index) || isReadOnly"/>
+        </el-col>
+
         <el-col>
-          <ms-api-variable-input :is-read-only="isReadOnly" v-model="item.name" size="small" maxlength="100" @change="change"
+          <ms-api-variable-input :show-copy="showCopy" :show-variable="showVariable" :is-read-only="isReadOnly" v-model="item.name" size="small" maxlength="200" @change="change"
                                  :placeholder="$t('api_test.variable_name')" show-word-limit/>
         </el-col>
         <el-col>
-          <el-input :disabled="isReadOnly" v-model="item.value" size="small" maxlength="100" @change="change"
+          <el-input :disabled="isReadOnly" v-model="item.value" size="small" @change="change"
                     :placeholder="$t('api_test.value')" show-word-limit/>
         </el-col>
         <el-col class="kv-delete">
@@ -35,9 +40,20 @@
       isReadOnly: {
         type: Boolean,
         default: false
+      },
+      showVariable: {
+        type: Boolean,
+        default: true
+      },
+      showCopy: {
+        type: Boolean,
+        default: true
+      },
+    },
+    data() {
+      return {
       }
     },
-
     methods: {
       remove: function (index) {
         this.items.splice(index, 1);
@@ -57,7 +73,7 @@
           }
         });
         if (isNeedCreate) {
-          this.items.push(new KeyValue());
+          this.items.push(new KeyValue({enable: true}));
         }
         this.$emit('change', this.items);
         // TODO 检查key重复
@@ -69,7 +85,7 @@
 
     created() {
       if (this.items.length === 0) {
-        this.items.push(new KeyValue());
+        this.items.push(new KeyValue({enable: true}));
       }
     }
   }
@@ -78,6 +94,11 @@
 <style scoped>
   .kv-description {
     font-size: 13px;
+  }
+
+  .kv-checkbox {
+    width: 20px;
+    margin-right: 10px;
   }
 
   .kv-row {

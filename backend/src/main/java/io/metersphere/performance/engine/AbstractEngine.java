@@ -18,6 +18,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public abstract class AbstractEngine implements Engine {
@@ -29,8 +30,8 @@ public abstract class AbstractEngine implements Engine {
     protected Integer threadNum;
     protected List<TestResource> resourceList;
 
-    private TestResourcePoolService testResourcePoolService;
-    private TestResourceService testResourceService;
+    private final TestResourcePoolService testResourcePoolService;
+    private final TestResourceService testResourceService;
 
     public AbstractEngine() {
         testResourcePoolService = CommonBeanFactory.getBean(TestResourcePoolService.class);
@@ -57,8 +58,14 @@ public abstract class AbstractEngine implements Engine {
         if (resourcePool == null) {
             MSException.throwException("Resource Pool is empty");
         }
-        if (!ResourcePoolTypeEnum.NODE.name().equals(resourcePool.getType())) {
+        if (!ResourcePoolTypeEnum.K8S.name().equals(resourcePool.getType())
+                && !ResourcePoolTypeEnum.NODE.name().equals(resourcePool.getType())) {
             MSException.throwException("Invalid Resource Pool type.");
+        }
+        // image
+        String image = resourcePool.getImage();
+        if (StringUtils.isNotEmpty(image)) {
+            JMETER_IMAGE = image;
         }
         this.resourceList = testResourceService.getResourcesByPoolId(resourcePool.getId());
         if (CollectionUtils.isEmpty(this.resourceList)) {
@@ -81,9 +88,22 @@ public abstract class AbstractEngine implements Engine {
         String loadConfiguration = t.getLoadConfiguration();
         JSONArray jsonArray = JSON.parseArray(loadConfiguration);
         for (int i = 0; i < jsonArray.size(); i++) {
-            JSONObject o = jsonArray.getJSONObject(i);
-            if (StringUtils.equals(o.getString("key"), "TargetLevel")) {
-                s = o.getInteger("value");
+            if (jsonArray.get(i) instanceof Map) {
+                JSONObject o = jsonArray.getJSONObject(i);
+                if (StringUtils.equals(o.getString("key"), "TargetLevel")) {
+                    s = o.getInteger("value");
+                    break;
+                }
+            }
+            if (jsonArray.get(i) instanceof List) {
+                JSONArray o = jsonArray.getJSONArray(i);
+                for (int j = 0; j < o.size(); j++) {
+                    JSONObject b = o.getJSONObject(j);
+                    if (StringUtils.equals(b.getString("key"), "TargetLevel")) {
+                        s += b.getInteger("value");
+                        break;
+                    }
+                }
             }
         }
         return s;

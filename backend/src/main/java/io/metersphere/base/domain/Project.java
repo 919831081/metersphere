@@ -18,5 +18,13 @@ public class Project implements Serializable {
 
     private Long updateTime;
 
+    private String tapdId;
+
+    private String jiraKey;
+
+    private String zentaoId;
+
+    private Boolean repeatable;
+
     private static final long serialVersionUID = 1L;
 }

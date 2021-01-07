@@ -16,29 +16,29 @@
         </el-row>
       </el-header>
 
-      <ms-api-scenario-config :is-read-only="true" :scenarios="test.scenarioDefinition" ref="config"/>
+      <ms-api-scenario-config :test="test" :project-id="test.projectId" :is-read-only="true" :scenarios="test.scenarioDefinition" ref="config"/>
 
   </el-container>
   </el-card>
 </template>
 
 <script>
-  import {Test} from "../../../../../api/test/model/ScenarioModel"
-  import MsApiScenarioConfig from "../../../../../api/test/components/ApiScenarioConfig";
-  import MsContainer from "../../../../../common/components/MsContainer";
-  import MsMainContainer from "../../../../../common/components/MsMainContainer";
+import {Test} from "../../../../../api/test/model/ScenarioModel"
+import MsApiScenarioConfig from "../../../../../api/test/components/ApiScenarioConfig";
+import MsContainer from "../../../../../common/components/MsContainer";
+import MsMainContainer from "../../../../../common/components/MsMainContainer";
 
-  export default {
-    name: "ApiTestDetail",
-    components: {MsMainContainer, MsContainer, MsApiScenarioConfig},
-    props: {
-      id: String,
-      isReadOnly: {
-        type: Boolean,
-        default: false
-      }
-    },
-    data() {
+export default {
+  name: "ApiTestDetail",
+  components: {MsMainContainer, MsContainer, MsApiScenarioConfig},
+  props: {
+    id: String,
+    isReadOnly: {
+      type: Boolean,
+      default: false
+    }
+  },
+  data() {
       return {
         result: {},
         test: new Test(),
@@ -70,6 +70,8 @@
             });
             this.getProject(item.projectId);
             this.$refs.config.reset();
+          } else {
+            this.test = new Test();
           }
         });
       },
@@ -79,7 +81,7 @@
         });
       },
       runTest() {
-        this.result = this.$post("/api/run", {id: this.test.id}, (response) => {
+        this.result = this.$post("/api/run", {id: this.test.id, triggerMode: 'MANUAL'}, (response) => {
           this.$success(this.$t('api_test.running'));
           this.$emit('runTest', response.data)
         });
@@ -90,7 +92,7 @@
 
 <style scoped>
   .test-container {
-    height: calc(100vh - 150px);
+    height: calc(100vh - 155px);
     min-height: 600px;
     padding: 15px;
   }

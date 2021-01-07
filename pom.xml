@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.metersphere</groupId>
     <artifactId>metersphere-server</artifactId>
-    <version>1.0</version>
+    <version>1.6</version>
     <packaging>pom</packaging>
 
     <parent>
@@ -13,7 +13,7 @@
         <version>2.2.6.RELEASE</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    
+
     <name>metersphere</name>
     <modules>
         <module>frontend</module>

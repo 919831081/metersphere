@@ -1,23 +1,28 @@
 <template>
   <div>
     <el-row :gutter="10" type="flex" justify="space-between" align="middle">
-      <el-col v-if="extractType == 'Regex'" :span="5">
+      <el-col v-if="extractType === 'Regex'" :span="5">
         <el-select :disabled="isReadOnly" class="extract-item" v-model="common.useHeaders" :placeholder="$t('api_test.request.assertions.select_subject')" size="small">
           <el-option v-for="item in useHeadersOption" :key="item.value" :label="item.label" :value="item.value"/>
         </el-select>
       </el-col>
       <el-col>
         <ms-api-variable-input :is-read-only="isReadOnly" v-model="common.variable" size="small" maxlength="60"
-                               @change="change" show-word-limit :placeholder="$t('api_test.variable_name')"/>
+                               @change="change" :show-copy-tip-with-multiple="common.multipleMatching" show-word-limit :placeholder="$t('api_test.variable_name')"/>
       </el-col>
       <el-col>
-        <el-input :disabled="isReadOnly" v-model="common.expression" maxlength="255" size="small" show-word-limit
+        <el-input :disabled="isReadOnly" v-model="common.expression" size="small" show-word-limit
                   :placeholder="expression"/>
+      </el-col>
+      <el-col class="multiple_checkbox">
+        <el-checkbox v-model="common.multipleMatching" :disabled="isReadOnly">
+          {{ $t('api_test.request.extract.multiple_matching') }}
+        </el-checkbox>
       </el-col>
       <el-col class="extract-btn">
         <el-button :disabled="isReadOnly" type="danger" size="mini" icon="el-icon-delete" circle @click="remove"
                    v-if="edit"/>
-        <el-button :disabled="isReadOnly" type="primary" size="small" icon="el-icon-plus" plain @click="add" v-else/>
+        <el-button :disabled="isReadOnly" type="primary" size="small" @click="add" v-else>Add</el-button>
       </el-col>
     </el-row>
   </div>
@@ -74,6 +79,7 @@
 
     methods: {
       add() {
+        this.common.type = this.extractType;
         this.list.push(new ExtractCommon(this.extractType, this.common));
         this.clear();
         this.callback();
@@ -158,4 +164,10 @@
   .extract-btn {
     width: 60px;
   }
+
+  .multiple_checkbox {
+    text-align: center;
+    width: 120px;
+  }
+
 </style>

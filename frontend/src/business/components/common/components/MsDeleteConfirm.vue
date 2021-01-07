@@ -1,5 +1,6 @@
 <template>
-  <el-dialog :title="title"
+  <el-dialog :close-on-click-modal="false"
+             :title="title"
              :visible.sync="dialogVisible"
              class="delete-confirm" >
 
@@ -9,6 +10,11 @@
         <span class="delete-tip"> DELETE-{{record.name}}</span>
         <br/>
       </el-col>
+    </el-row>
+    <el-row class="tip" v-if="withTip">
+      <span>
+       <slot class="tip"></slot>
+      </span>
     </el-row>
     <el-row>
       <el-col :span="15">
@@ -39,6 +45,12 @@
           type: String,
           default() {
             return this.$t('commons.title')
+          }
+        },
+        withTip: {
+          type: Boolean,
+          default() {
+            return false
           }
         }
       },
@@ -79,5 +91,9 @@
     font-weight: bold;
   }
 
+  .tip {
+    margin-bottom: 20px;
+    color: red;
+  }
 
 </style>

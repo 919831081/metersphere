@@ -10,9 +10,11 @@
     <result column="status" jdbcType="VARCHAR" property="status" />
     <result column="user_id" jdbcType="VARCHAR" property="userId" />
     <result column="trigger_mode" jdbcType="VARCHAR" property="triggerMode" />
+    <result column="file_id" jdbcType="VARCHAR" property="fileId" />
   </resultMap>
-  <resultMap extends="BaseResultMap" id="ResultMapWithBLOBs" type="io.metersphere.base.domain.LoadTestReport">
+  <resultMap extends="BaseResultMap" id="ResultMapWithBLOBs" type="io.metersphere.base.domain.LoadTestReportWithBLOBs">
     <result column="description" jdbcType="LONGVARCHAR" property="description" />
+    <result column="load_configuration" jdbcType="LONGVARCHAR" property="loadConfiguration" />
   </resultMap>
   <sql id="Example_Where_Clause">
     <where>
@@ -73,10 +75,10 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    id, test_id, `name`, create_time, update_time, `status`, user_id, trigger_mode
+    id, test_id, `name`, create_time, update_time, `status`, user_id, trigger_mode, file_id
   </sql>
   <sql id="Blob_Column_List">
-    description
+    description, load_configuration
   </sql>
   <select id="selectByExampleWithBLOBs" parameterType="io.metersphere.base.domain.LoadTestReportExample" resultMap="ResultMapWithBLOBs">
     select
@@ -126,17 +128,17 @@
       <include refid="Example_Where_Clause" />
     </if>
   </delete>
-  <insert id="insert" parameterType="io.metersphere.base.domain.LoadTestReport">
-    insert into load_test_report (id, test_id, `name`, 
+  <insert id="insert" parameterType="io.metersphere.base.domain.LoadTestReportWithBLOBs">
+    INSERT INTO load_test_report (id, test_id, `name`,
       create_time, update_time, `status`, 
-      user_id, trigger_mode, description
-      )
-    values (#{id,jdbcType=VARCHAR}, #{testId,jdbcType=VARCHAR}, #{name,jdbcType=VARCHAR}, 
+      user_id, trigger_mode, file_id, 
+      description, load_configuration)
+    VALUES (#{id,jdbcType=VARCHAR}, #{testId,jdbcType=VARCHAR}, #{name,jdbcType=VARCHAR},
       #{createTime,jdbcType=BIGINT}, #{updateTime,jdbcType=BIGINT}, #{status,jdbcType=VARCHAR}, 
-      #{userId,jdbcType=VARCHAR}, #{triggerMode,jdbcType=VARCHAR}, #{description,jdbcType=LONGVARCHAR}
-      )
+      #{userId,jdbcType=VARCHAR}, #{triggerMode,jdbcType=VARCHAR}, #{fileId,jdbcType=VARCHAR}, 
+      #{description,jdbcType=LONGVARCHAR}, #{loadConfiguration,jdbcType=LONGVARCHAR})
   </insert>
-  <insert id="insertSelective" parameterType="io.metersphere.base.domain.LoadTestReport">
+  <insert id="insertSelective" parameterType="io.metersphere.base.domain.LoadTestReportWithBLOBs">
     insert into load_test_report
     <trim prefix="(" suffix=")" suffixOverrides=",">
       <if test="id != null">
@@ -163,8 +165,14 @@
       <if test="triggerMode != null">
         trigger_mode,
       </if>
+      <if test="fileId != null">
+        file_id,
+      </if>
       <if test="description != null">
         description,
+      </if>
+      <if test="loadConfiguration != null">
+        load_configuration,
       </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
@@ -192,8 +200,14 @@
       <if test="triggerMode != null">
         #{triggerMode,jdbcType=VARCHAR},
       </if>
+      <if test="fileId != null">
+        #{fileId,jdbcType=VARCHAR},
+      </if>
       <if test="description != null">
         #{description,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="loadConfiguration != null">
+        #{loadConfiguration,jdbcType=LONGVARCHAR},
       </if>
     </trim>
   </insert>
@@ -230,8 +244,14 @@
       <if test="record.triggerMode != null">
         trigger_mode = #{record.triggerMode,jdbcType=VARCHAR},
       </if>
+      <if test="record.fileId != null">
+        file_id = #{record.fileId,jdbcType=VARCHAR},
+      </if>
       <if test="record.description != null">
         description = #{record.description,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="record.loadConfiguration != null">
+        load_configuration = #{record.loadConfiguration,jdbcType=LONGVARCHAR},
       </if>
     </set>
     <if test="_parameter != null">
@@ -248,7 +268,9 @@
       `status` = #{record.status,jdbcType=VARCHAR},
       user_id = #{record.userId,jdbcType=VARCHAR},
       trigger_mode = #{record.triggerMode,jdbcType=VARCHAR},
-      description = #{record.description,jdbcType=LONGVARCHAR}
+      file_id = #{record.fileId,jdbcType=VARCHAR},
+      description = #{record.description,jdbcType=LONGVARCHAR},
+      load_configuration = #{record.loadConfiguration,jdbcType=LONGVARCHAR}
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
     </if>
@@ -262,12 +284,13 @@
       update_time = #{record.updateTime,jdbcType=BIGINT},
       `status` = #{record.status,jdbcType=VARCHAR},
       user_id = #{record.userId,jdbcType=VARCHAR},
-      trigger_mode = #{record.triggerMode,jdbcType=VARCHAR}
+      trigger_mode = #{record.triggerMode,jdbcType=VARCHAR},
+      file_id = #{record.fileId,jdbcType=VARCHAR}
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
     </if>
   </update>
-  <update id="updateByPrimaryKeySelective" parameterType="io.metersphere.base.domain.LoadTestReport">
+  <update id="updateByPrimaryKeySelective" parameterType="io.metersphere.base.domain.LoadTestReportWithBLOBs">
     update load_test_report
     <set>
       <if test="testId != null">
@@ -291,33 +314,42 @@
       <if test="triggerMode != null">
         trigger_mode = #{triggerMode,jdbcType=VARCHAR},
       </if>
+      <if test="fileId != null">
+        file_id = #{fileId,jdbcType=VARCHAR},
+      </if>
       <if test="description != null">
         description = #{description,jdbcType=LONGVARCHAR},
+      </if>
+      <if test="loadConfiguration != null">
+        load_configuration = #{loadConfiguration,jdbcType=LONGVARCHAR},
       </if>
     </set>
     where id = #{id,jdbcType=VARCHAR}
   </update>
-  <update id="updateByPrimaryKeyWithBLOBs" parameterType="io.metersphere.base.domain.LoadTestReport">
-    update load_test_report
-    set test_id = #{testId,jdbcType=VARCHAR},
+  <update id="updateByPrimaryKeyWithBLOBs" parameterType="io.metersphere.base.domain.LoadTestReportWithBLOBs">
+    UPDATE load_test_report
+    SET test_id = #{testId,jdbcType=VARCHAR},
       `name` = #{name,jdbcType=VARCHAR},
       create_time = #{createTime,jdbcType=BIGINT},
       update_time = #{updateTime,jdbcType=BIGINT},
       `status` = #{status,jdbcType=VARCHAR},
       user_id = #{userId,jdbcType=VARCHAR},
       trigger_mode = #{triggerMode,jdbcType=VARCHAR},
-      description = #{description,jdbcType=LONGVARCHAR}
-    where id = #{id,jdbcType=VARCHAR}
+      file_id = #{fileId,jdbcType=VARCHAR},
+      description = #{description,jdbcType=LONGVARCHAR},
+      load_configuration = #{loadConfiguration,jdbcType=LONGVARCHAR}
+    WHERE id = #{id,jdbcType=VARCHAR}
   </update>
   <update id="updateByPrimaryKey" parameterType="io.metersphere.base.domain.LoadTestReport">
-    update load_test_report
-    set test_id = #{testId,jdbcType=VARCHAR},
+    UPDATE load_test_report
+    SET test_id = #{testId,jdbcType=VARCHAR},
       `name` = #{name,jdbcType=VARCHAR},
       create_time = #{createTime,jdbcType=BIGINT},
       update_time = #{updateTime,jdbcType=BIGINT},
       `status` = #{status,jdbcType=VARCHAR},
       user_id = #{userId,jdbcType=VARCHAR},
-      trigger_mode = #{triggerMode,jdbcType=VARCHAR}
-    where id = #{id,jdbcType=VARCHAR}
+      trigger_mode = #{triggerMode,jdbcType=VARCHAR},
+      file_id = #{fileId,jdbcType=VARCHAR}
+    WHERE id = #{id,jdbcType=VARCHAR}
   </update>
 </mapper>

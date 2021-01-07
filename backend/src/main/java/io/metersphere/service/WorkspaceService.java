@@ -26,7 +26,6 @@ import org.springframework.util.CollectionUtils;
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -203,6 +202,10 @@ public class WorkspaceService {
         return resultWorkspaceList;
     }
 
+    public List<String> getWorkspaceIdsOrgId(String orgId) {
+       return extWorkspaceMapper.getWorkspaceIdsByOrgId(orgId);
+    }
+
     public void updateWorkspaceMember(WorkspaceMemberDTO memberDTO) {
         String workspaceId = memberDTO.getWorkspaceId();
         String userId = memberDTO.getId();
@@ -274,5 +277,11 @@ public class WorkspaceService {
             MSException.throwException(Translator.get("workspace_name_already_exists"));
         }
 
+    }
+
+    public List<Project> getProjects(String workspaceId) {
+        ProjectExample projectExample = new ProjectExample();
+        projectExample.createCriteria().andWorkspaceIdEqualTo(workspaceId);
+        return projectMapper.selectByExample(projectExample);
     }
 }
